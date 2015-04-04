@@ -35,7 +35,7 @@
 (defconst eopengrok-indexing-buffer "*eopengrok-indexing-buffer*")
 
 (defcustom eopengrok-jar
-  "/Users/youngker/Projects/opengrok-0.12.1/lib/opengrok.jar"
+  "/Users/youngker/Projects/opengrok-0.12.1.5/lib/opengrok.jar"
   "DOC."
   :group 'eopengrok)
 
@@ -187,25 +187,30 @@
        (replace-regexp-in-string "]$" "")
        (s-replace-all '(("&lt;" . "<") ("&gt;" . ">") ("&amp;" . "&")))))
 
+(defun eopengrok-make-entry-line (arg-list)
+  (-let (((_ file lnum line) arg-list))
+    (setq file (replace-regexp-in-string ":$" "" file))
+    (setq line (replace-regexp-in-string "^\\[" "" line))
+    (unless (string= file eopengrok-last-filename)
+      (newline)
+      (insert (format "%s:\n"
+                      (propertize file 'face 'eopengrok-file-face)))
+      (eopengrok-abbreviate-file file))
+    (eopengrok-properties-region
+     (list 'eopengrok-file (expand-file-name file)
+           'eopengrok-lnum (string-to-number lnum))
+     (insert (concat
+              (propertize lnum 'face 'eopengrok-lnum-face) ": "
+              (propertize line 'face 'eopengrok-source-face))))
+    (newline)
+    (setq eopengrok-last-filename file)))
+
 (defun eopengrok-remove-wrap-square (line)
-  (-if-let (line-list (s-match "\\(^/.*:\\)\\([0-9]+\\)[ \t]+\\(.*\\)" line))
-      (-let (((_ file number source) line-list))
-        (setq file (replace-regexp-in-string ":$" "" file))
-        (setq source (replace-regexp-in-string "^\\[" "" source))
-        (unless (string= file eopengrok-last-filename)
-          (newline)
-          (insert (format "%s:\n"
-                          (propertize file 'face 'eopengrok-file-face)))
-          (eopengrok-abbreviate-file file))
-        (eopengrok-properties-region
-         (list 'eopengrok-file (expand-file-name file)
-               'eopengrok-lnum (string-to-number number))
-         (insert (concat
-                  (propertize number 'face 'eopengrok-lnum-face) ": "
-                  (propertize source 'face 'eopengrok-source-face))))
-        (newline)
-        (setq eopengrok-last-filename file))
-    (insert line "\n")))
+  (-if-let (arg-list (s-match "\\(^/.*:\\)\\([0-9]+\\)[ \t]+\\(.*\\)" line))
+      (eopengrok-make-entry-line arg-list)
+    (-if-let (arg-list (s-match "\\(^/.*:\\)[ \t]+\\(.*\\)" line))
+        (eopengrok-make-entry-line (-insert-at 2 "1" arg-list))
+      (insert line "\n"))))
 
 (defun eopengrok-process-filter (process output)
   (with-current-buffer eopengrok-buffer
@@ -272,7 +277,7 @@
 (--each '(("\C-csI"   . eopengrok-index-files)
           ("\C-csd"   . eopengrok-find-definition)
           ("\C-csf"   . eopengrok-find-file)
-          ("\C-css"   . eopengrok-find-symbol)
+          ("\C-css"   . eopengrok-find-reference)
           ("\C-cst"   . eopengrok-find-text)
           ("n"        . eopengrok-next-line)
           ("p"        . eopengrok-previous-line)
