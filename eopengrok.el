@@ -187,7 +187,7 @@
   (->> line
        (replace-regexp-in-string "<[^>]*>" "")
        (replace-regexp-in-string "]$" "")
-       (s-replace-all '(("&lt;" . "<") ("&gt;" . ">") ("&amp;" . "&")))))
+       (s-replace-all '(("&lt;" . "<") ("&gt;" . ">") ("&amp;" . "&") ("" . "")))))
 
 (defun eopengrok-make-entry-line (arg-list)
   (-let (((_ file number line) arg-list))
@@ -216,7 +216,8 @@
 
 (defun eopengrok-process-filter (process output)
   (with-current-buffer eopengrok-buffer
-    (let ((pos 0)
+    (let ((buffer-read-only nil)
+          (pos 0)
           (output (concat eopengrok-pending-output output)))
       (save-excursion
         (while (string-match "\n" output pos)
@@ -226,8 +227,7 @@
             (-> line
                 eopengrok-remove-html-tags
                 eopengrok-read-line))))
-      (setq eopengrok-pending-output (substring output pos)))
-    (set-buffer-modified-p nil)))
+      (setq eopengrok-pending-output (substring output pos)))))
 
 (defun eopengrok-process-sentinel (process event)
   (message (format "eopengrok %S" event)))
@@ -249,7 +249,9 @@
               (set-process-filter eopengrok-process 'eopengrok-process-filter)
               (set-process-sentinel eopengrok-process 'eopengrok-process-sentinel)
               (with-current-buffer eopengrok-buffer
-                (eopengrok-mode t))
+                (eopengrok-mode t)
+                (setq buffer-read-only t)
+                (set-buffer-modified-p nil))
               (pop-to-buffer eopengrok-buffer)
               (goto-char (point-max))))))
 
