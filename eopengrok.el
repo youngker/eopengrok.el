@@ -76,7 +76,7 @@
   "Face for files."
   :group 'eopengrok)
 
-(defface eopengrok-lnum-face
+(defface eopengrok-number-face
   '((((class color) (background dark))
      (:foreground "SeaGreen2"))
     (((class color) (background light))
@@ -127,37 +127,39 @@
          (add-text-properties ,start (point) ,props)))))
 
 (defun eopengrok-get-properties ()
-  (list (get-text-property (point) 'eopengrok-file)
-          (get-text-property (point) 'eopengrok-lnum)))
+  (list (get-text-property (point) :file-name)
+        (get-text-property (point) :file-number)))
 
 (defun eopengrok-preview-source ()
   (with-current-buffer eopengrok-buffer
-    (-let (((file lnum) (eopengrok-get-properties)))
+    (-let (((file number) (eopengrok-get-properties)))
       (setq buffer (find-file-noselect file))
       (setq window (display-buffer buffer))
       (set-buffer buffer)
-      (goto-line lnum)
-      (set-window-point window (point))
-      (ring-insert find-tag-marker-ring (point-marker))))
+      (goto-line number)
+      (set-window-point window (point))))
   window)
 
 (defun eopengrok-jump-to-source ()
   (interactive)
-  (select-window (eopengrok-preview-source)))
+  (select-window (eopengrok-preview-source))
+  (ring-insert find-tag-marker-ring (point-marker)))
 
 (defun eopengrok-next-line ()
   (interactive)
   (with-current-buffer eopengrok-buffer
-    (-when-let (pos (next-single-property-change (point) 'eopengrok-file))
-      (message (number-to-string pos))
+    (-when-let (pos (next-single-property-change (point) :file-number))
+      (while (not (get-text-property pos :file-number))
+        (setq pos (next-single-property-change pos :file-number)))
       (goto-char pos)
       (eopengrok-preview-source))))
 
 (defun eopengrok-previous-line ()
   (interactive)
   (with-current-buffer eopengrok-buffer
-    (-when-let (pos (previous-single-property-change (point) 'eopengrok-lnum))
-      (message (number-to-string pos))
+    (-when-let (pos (previous-single-property-change (point) :file-number))
+      (while (not (get-text-property pos :file-number))
+        (setq pos (previous-single-property-change pos :file-number)))
       (goto-char pos)
       (eopengrok-preview-source))))
 
@@ -188,7 +190,7 @@
        (s-replace-all '(("&lt;" . "<") ("&gt;" . ">") ("&amp;" . "&")))))
 
 (defun eopengrok-make-entry-line (arg-list)
-  (-let (((_ file lnum line) arg-list))
+  (-let (((_ file number line) arg-list))
     (setq file (replace-regexp-in-string ":$" "" file))
     (setq line (replace-regexp-in-string "^\\[" "" line))
     (unless (string= file eopengrok-last-filename)
@@ -197,15 +199,15 @@
                       (propertize file 'face 'eopengrok-file-face)))
       (eopengrok-abbreviate-file file))
     (eopengrok-properties-region
-     (list 'eopengrok-file (expand-file-name file)
-           'eopengrok-lnum (string-to-number lnum))
+     (list :file-name (expand-file-name file)
+           :file-number (string-to-number number))
      (insert (concat
-              (propertize lnum 'face 'eopengrok-lnum-face) ": "
+              (propertize number 'face 'eopengrok-number-face) ": "
               (propertize line 'face 'eopengrok-source-face))))
     (newline)
     (setq eopengrok-last-filename file)))
 
-(defun eopengrok-remove-wrap-square (line)
+(defun eopengrok-read-line (line)
   (-if-let (arg-list (s-match "\\(^/.*:\\)\\([0-9]+\\)[ \t]+\\(.*\\)" line))
       (eopengrok-make-entry-line arg-list)
     (-if-let (arg-list (s-match "\\(^/.*:\\)[ \t]+\\(.*\\)" line))
@@ -223,7 +225,7 @@
             (goto-char (point-max))
             (-> line
                 eopengrok-remove-html-tags
-                eopengrok-remove-wrap-square))))
+                eopengrok-read-line))))
       (setq eopengrok-pending-output (substring output pos)))
     (set-buffer-modified-p nil)))
 
