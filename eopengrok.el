@@ -30,12 +30,13 @@
 
 (defvar eopengrok-pending-output nil)
 (defvar eopengrok-last-filename nil)
+(defvar eopengrok-search-text nil)
 
 (defconst eopengrok-buffer "*eopengrok*")
 (defconst eopengrok-indexing-buffer "*eopengrok-indexing-buffer*")
 
 (defcustom eopengrok-jar
-  "/Users/youngker/Projects/opengrok-0.12.1.5/lib/opengrok.jar"
+  "/home/youngjooez.lee/Projects/opengrok-0.12.1/lib/opengrok.jar"
   "DOC."
   :group 'eopengrok)
 
@@ -94,6 +95,15 @@
   "Face for source."
   :group 'eopengrok)
 
+(defface eopengrok-highlight-face
+  '((((class color) (background dark))
+     (:foreground "white" :background "dodgerblue4"))
+    (((class color) (background light))
+     (:foreground "white" :background "blue"))
+    (t (:bold nil)))
+  "Face used to highlight"
+  :group 'cscope)
+
 (defun eopengrok-index-option-list (dir)
   (-flatten (list "-Xms128m" "-Xmx1024m"
                   "-cp" eopengrok-jar "org.opensolaris.opengrok.index.Indexer"
@@ -126,19 +136,19 @@
        (prog1 (progn ,@body)
          (add-text-properties ,start (point) ,props)))))
 
-(defun eopengrok-get-properties ()
-  (list (get-text-property (point) :file-name)
-        (get-text-property (point) :file-number)))
+(defun eopengrok-get-properties (pos)
+  (list (get-text-property pos :file-name)
+        (get-text-property pos :file-number)))
 
 (defun eopengrok-preview-source ()
   (with-current-buffer eopengrok-buffer
-    (-let (((file number) (eopengrok-get-properties)))
-      (setq buffer (find-file-noselect file))
-      (setq window (display-buffer buffer))
+    (-let* (((file number) (eopengrok-get-properties (point)))
+            (buffer (find-file-noselect file))
+            (window (display-buffer buffer)))
       (set-buffer buffer)
       (goto-line number)
-      (set-window-point window (point))))
-  window)
+      (set-window-point window (point))
+      window)))
 
 (defun eopengrok-jump-to-source ()
   (interactive)
@@ -189,22 +199,30 @@
        (replace-regexp-in-string "]$" "")
        (s-replace-all '(("&lt;" . "<") ("&gt;" . ">") ("&amp;" . "&") ("" . "")))))
 
+(defun eopengrok-text-highlight (line)
+  (let ((pos 0))
+    (while (string-match (concat "\\b" eopengrok-search-text "\\b") line pos)
+      (setq pos (match-end 0))
+      (put-text-property (match-beginning 0)
+                         (match-end 0)
+                         'face 'eopengrok-highlight-face line))))
+
 (defun eopengrok-make-entry-line (arg-list)
-  (-let (((_ file number line) arg-list))
-    (setq file (replace-regexp-in-string ":$" "" file))
-    (setq line (replace-regexp-in-string "^\\[" "" line))
+  (-let* (((_ file number line) arg-list)
+          (file (propertize (replace-regexp-in-string ":$" "" file)
+                            'face 'eopengrok-file-face))
+          (number (propertize number
+                              'face 'eopengrok-number-face))
+          (line (propertize (replace-regexp-in-string "^\\[" "" line)
+                            'face 'eopengrok-source-face)))
     (unless (string= file eopengrok-last-filename)
-      (newline)
-      (insert (format "%s:\n"
-                      (propertize file 'face 'eopengrok-file-face)))
+      (insert (format "\n%s:\n" file))
       (eopengrok-abbreviate-file file))
     (eopengrok-properties-region
      (list :file-name (expand-file-name file)
            :file-number (string-to-number number))
-     (insert (concat
-              (propertize number 'face 'eopengrok-number-face) ": "
-              (propertize line 'face 'eopengrok-source-face))))
-    (newline)
+     (eopengrok-text-highlight line)
+     (insert (concat number ": " line "\n")))
     (setq eopengrok-last-filename file)))
 
 (defun eopengrok-read-line (line)
@@ -246,6 +264,7 @@
                            eopengrok-buffer
                            "java"
                            (eopengrok-search-option-list ,option text)))
+              (setq eopengrok-search-text text)
               (set-process-filter eopengrok-process 'eopengrok-process-filter)
               (set-process-sentinel eopengrok-process 'eopengrok-process-sentinel)
               (with-current-buffer eopengrok-buffer
