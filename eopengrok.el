@@ -27,10 +27,13 @@
 
 (require 's)
 (require 'dash)
+(require 'cl-lib)
 
 (defvar eopengrok-pending-output nil)
 (defvar eopengrok-last-filename nil)
 (defvar eopengrok-search-text nil)
+(defvar eopengrok-first-match-point nil)
+(defvar eopengrok-time nil)
 
 (defconst eopengrok-buffer "*eopengrok*")
 (defconst eopengrok-indexing-buffer "*eopengrok-indexing-buffer*")
@@ -51,16 +54,14 @@
   :group 'eopengrok)
 
 (defcustom eopengrok-indexer-suffixes
-  '("-I" "*.c" "-I" "*.h" "-I" "*.cpp" "-I" "*.hpp" "-I" "*.cc" "-I" "*.hh"
-    "-I" "*.m" "-I" "*.xml" "-I" "*.mk" "-I" "*.py" "-I" "*.rb" "-I" "*.java"
-    "-I" "*.js" "-I" "*.el")
+  '("*.c" "*.h" "*.cpp" "*.hpp" "*.cc" "*.hh" "*.m" "*.xml" "*.mk" "*.py"
+    "*.rb" "*.java" "*.js" "*.el")
   "DOC."
   :group 'eopengrok)
 
 (defcustom eopengrok-ignored-dir
-  '("-i" "CVS" "-i" "RCS" "-i" "SCCS" "-i" ".git" "-i" ".hg" "-i" ".bzr"
-    "-i" ".cdv" "-i" ".pc" "-i" ".svn" "-i" "_MTN" "-i" "_darcs" "-i" "_sgbak"
-    "-i" "debian" "-i" ".opengrok" "-i" "out" "-i" ".repo")
+  '("CVS" "RCS" "SCCS" ".git" ".hg" ".bzr" ".cdv" ".pc" ".svn" "_MTN" "_darcs"
+    "_sgbak" "debian" ".opengrok" "out" ".repo")
   "DOC."
   :group 'eopengrok)
 
@@ -69,40 +70,29 @@
   :group 'eopengrok)
 
 (defface eopengrok-file-face
-  '((((class color) (background dark))
-     (:foreground "LightSkyBlue"))
-    (((class color) (background light))
-     (:foreground "blue"))
-    (t (:bold t)))
+  '((t :inherit font-lock-function-name-face))
   "Face for files."
   :group 'eopengrok)
 
 (defface eopengrok-number-face
-  '((((class color) (background dark))
-     (:foreground "SeaGreen2"))
-    (((class color) (background light))
-     (:foreground "red"))
-    (t (:bold t)))
+  '((t :inherit font-lock-constant-face))
   "Face for line number."
   :group 'eopengrok)
 
 (defface eopengrok-source-face
-  '((((class color) (background dark))
-     (:foreground "darkorange3"))
-    (((class color) (background light))
-     (:foreground "magenta"))
-    (t (:bold t)))
+  '((t :inherit font-lock-doc-face))
   "Face for source."
   :group 'eopengrok)
 
 (defface eopengrok-highlight-face
-  '((((class color) (background dark))
-     (:foreground "white" :background "dodgerblue4"))
-    (((class color) (background light))
-     (:foreground "white" :background "blue"))
-    (t (:bold nil)))
-  "Face used to highlight"
-  :group 'cscope)
+  '((t :inherit highlight))
+  "Face for highlight item."
+  :group 'eopengrok)
+
+(defun eopengrok-switch-to-buffer ()
+  (interactive)
+  (when (get-buffer eopengrok-buffer)
+    (pop-to-buffer eopengrok-buffer)))
 
 (defun eopengrok-index-option-list (dir)
   (-flatten (list "-Xms128m" "-Xmx1024m"
@@ -111,8 +101,8 @@
                   "-W" (concat dir eopengrok-database)
                   "-d" (concat dir ".opengrok")
                   "-s" dir
-                  eopengrok-indexer-suffixes
-                  eopengrok-ignored-dir)))
+                  (--mapcat (list "-I" it) eopengrok-indexer-suffixes)
+                  (--mapcat (list "-i" it) eopengrok-ignored-dir))))
 
 (defun eopengrok-search-configuration ()
   (let ((dir (expand-file-name default-directory)))
@@ -124,11 +114,10 @@
                    (file-name-directory
                     (directory-file-name dir))))))))
 
-(defun eopengrok-search-option-list (find-option text)
+(defun eopengrok-search-option-list (dir find-option text)
   (list "-Xms128m" "-Xmx1024m"
         "-cp" eopengrok-jar "org.opensolaris.opengrok.search.Search"
-        "-R" (eopengrok-search-configuration)
-        find-option text))
+        "-R" dir find-option text))
 
 (defmacro eopengrok-properties-region (props &rest body)
   (let ((start (cl-gensym)))
@@ -142,18 +131,22 @@
 
 (defun eopengrok-preview-source ()
   (with-current-buffer eopengrok-buffer
-    (-let* (((file number) (eopengrok-get-properties (point)))
-            (buffer (find-file-noselect file))
-            (window (display-buffer buffer)))
-      (set-buffer buffer)
-      (goto-line number)
-      (set-window-point window (point))
-      window)))
+    (-if-let* (((file number) (eopengrok-get-properties (point))))
+        (let* ((buffer (find-file-noselect file))
+               (window (display-buffer buffer)))
+          (set-buffer buffer)
+          (save-restriction
+            (widen)
+            (goto-char (point-min))
+            (forward-line (1- number)))
+          (set-window-point window (point))
+          window))))
 
 (defun eopengrok-jump-to-source ()
   (interactive)
-  (select-window (eopengrok-preview-source))
-  (ring-insert find-tag-marker-ring (point-marker)))
+  (-when-let (window (eopengrok-preview-source))
+    (select-window window)
+    (ring-insert find-tag-marker-ring (point-marker))))
 
 (defun eopengrok-next-line ()
   (interactive)
@@ -197,7 +190,8 @@
   (->> line
        (replace-regexp-in-string "<[^>]*>" "")
        (replace-regexp-in-string "]$" "")
-       (s-replace-all '(("&lt;" . "<") ("&gt;" . ">") ("&amp;" . "&") ("" . "")))))
+       (s-replace-all '(("&lt;" . "<") ("&gt;" . ">")
+                        ("&amp;" . "&") ("" . "")))))
 
 (defun eopengrok-text-highlight (line)
   (let ((pos 0))
@@ -216,13 +210,15 @@
           (line (propertize (replace-regexp-in-string "^\\[" "" line)
                             'face 'eopengrok-source-face)))
     (unless (string= file eopengrok-last-filename)
-      (insert (format "\n%s:\n" file))
-      (eopengrok-abbreviate-file file))
+      (insert (format "\n%s\n" file))
+      (eopengrok-abbreviate-file file)
+      (unless eopengrok-first-match-point
+       (setq eopengrok-first-match-point (point))))
     (eopengrok-properties-region
      (list :file-name (expand-file-name file)
            :file-number (string-to-number number))
      (eopengrok-text-highlight line)
-     (insert (concat number ": " line "\n")))
+     (insert (concat (format "%05s" number) " " line "\n")))
     (setq eopengrok-last-filename file)))
 
 (defun eopengrok-read-line (line)
@@ -248,7 +244,25 @@
       (setq eopengrok-pending-output (substring output pos)))))
 
 (defun eopengrok-process-sentinel (process event)
-  (message (format "eopengrok %S" event)))
+  (with-current-buffer eopengrok-buffer
+    (setq buffer-read-only nil)
+    (goto-char (point-max))
+    (insert (format "\nSearch complete.  Search time = %.2f seconds.\n"
+                    (float-time (time-subtract (current-time)
+                                               eopengrok-time))))
+    (goto-char eopengrok-first-match-point)))
+
+(defun eopengrok-init (text dir)
+  (with-current-buffer eopengrok-buffer
+    (setq eopengrok-time (current-time))
+    (setq buffer-read-only nil)
+    (setq eopengrok-last-filename nil)
+    (setq eopengrok-first-match-point nil)
+    (goto-char (point-max))
+    (insert (s-repeat 80 "="))
+    (insert (format "\nFinding text string: %s" text))
+    (insert (format "\nDirectory: %s\n"
+                    (s-chop-suffix eopengrok-database dir)))))
 
 (defmacro eopengrok-define-find (sym option)
   "Define function."
@@ -258,21 +272,23 @@
     `(progn
        (defun ,fun (text) ,doc
               (interactive (list (read-string ,str (current-word))))
-              (setq eopengrok-process
-                    (apply 'start-process
-                           eopengrok-buffer
-                           eopengrok-buffer
-                           "java"
-                           (eopengrok-search-option-list ,option text)))
-              (setq eopengrok-search-text text)
-              (set-process-filter eopengrok-process 'eopengrok-process-filter)
-              (set-process-sentinel eopengrok-process 'eopengrok-process-sentinel)
-              (with-current-buffer eopengrok-buffer
-                (eopengrok-mode t)
-                (setq buffer-read-only t)
-                (set-buffer-modified-p nil))
-              (pop-to-buffer eopengrok-buffer)
-              (goto-char (point-max))))))
+              (let* ((dir (eopengrok-search-configuration))
+                     (proc (apply 'start-process
+                                  "eopengrok"
+                                  eopengrok-buffer
+                                  "java"
+                                  (eopengrok-search-option-list
+                                   dir ,option text))))
+                (eopengrok-init text dir)
+                (setq eopengrok-search-text text)
+                (set-process-filter proc 'eopengrok-process-filter)
+                (set-process-sentinel proc 'eopengrok-process-sentinel)
+                (with-current-buffer eopengrok-buffer
+                  (eopengrok-mode t)
+                  (setq buffer-read-only t)
+                  (set-buffer-modified-p nil))
+                (pop-to-buffer eopengrok-buffer)
+                (goto-char (point-max)))))))
 
 (eopengrok-define-find definition "-d")
 (eopengrok-define-find file "-p")
@@ -280,10 +296,10 @@
 (eopengrok-define-find text "-f")
 
 (defun eopengrok-index-files (dir)
-  "Index files in a directory"
+  "Index files in a directory."
   (interactive "DIndex files in directory: ")
   (apply 'start-process
-         eopengrok-indexing-buffer
+         "eopengrok-indexer"
          eopengrok-indexing-buffer
          "java"
          (eopengrok-index-option-list (expand-file-name dir)))
@@ -302,6 +318,7 @@
           ("\C-csf"   . eopengrok-find-file)
           ("\C-css"   . eopengrok-find-reference)
           ("\C-cst"   . eopengrok-find-text)
+          ("\C-csl"   . eopengrok-switch-to-buffer)
           ("n"        . eopengrok-next-line)
           ("p"        . eopengrok-previous-line)
           ("<return>" . eopengrok-jump-to-source))
