@@ -94,6 +94,10 @@
   (when (get-buffer eopengrok-buffer)
     (pop-to-buffer eopengrok-buffer)))
 
+(defun eopengrok-say-yes ()
+  (interactive)
+  (process-send-string (get-process "eopengrok") "n\n"))
+
 (defun eopengrok-index-option-list (dir)
   (-flatten (list "-Xms128m" "-Xmx1024m"
                   "-cp" eopengrok-jar "org.opensolaris.opengrok.index.Indexer"
@@ -321,6 +325,7 @@
           ("\C-csl"   . eopengrok-switch-to-buffer)
           ("n"        . eopengrok-next-line)
           ("p"        . eopengrok-previous-line)
+          ("y"        . eopengrok-say-yes)
           ("<return>" . eopengrok-jump-to-source))
   (define-key eopengrok-mode-map (read-kbd-macro (car it)) (cdr it)))
 
