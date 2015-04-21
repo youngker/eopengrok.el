@@ -60,7 +60,7 @@
   :group 'eopengrok)
 
 (defcustom eopengrok-ignored-dir
-  '("CVS" "RCS" "SCCS" ".git" ".hg" ".bzr" ".cdv" ".pc" ".svn" "_MTN" "_darcs"
+  '("CVS" "RCS" "SCCS" ".hg" ".bzr" ".cdv" ".pc" ".svn" "_MTN" "_darcs"
     "_sgbak" "debian" ".opengrok" "out" ".repo")
   "DOC."
   :group 'eopengrok)
@@ -105,6 +105,7 @@
                   "-W" (concat dir eopengrok-database)
                   "-d" (concat dir ".opengrok")
                   "-s" dir
+                  "-C" "-S" "-H"
                   (--mapcat (list "-I" it) eopengrok-indexer-suffixes)
                   (--mapcat (list "-i" it) eopengrok-ignored-dir))))
 
@@ -217,7 +218,7 @@
       (insert (format "\n%s\n" file))
       (eopengrok-abbreviate-file file)
       (unless eopengrok-first-match-point
-       (setq eopengrok-first-match-point (point))))
+        (setq eopengrok-first-match-point (point))))
     (eopengrok-properties-region
      (list :file-name (expand-file-name file)
            :file-number (string-to-number number))
@@ -226,11 +227,13 @@
     (setq eopengrok-last-filename file)))
 
 (defun eopengrok-read-line (line)
-  (-if-let (arg-list (s-match "\\(^/.*:\\)\\([0-9]+\\)[ \t]+\\(.*\\)" line))
+  (-if-let (arg-list (s-match "\\(^/[^ ]*?:\\)\\([0-9]+\\)[ \t]+\\(.*\\)" line))
       (eopengrok-make-entry-line arg-list)
-    (-if-let (arg-list (s-match "\\(^/.*:\\)[ \t]+\\(.*\\)" line))
+    (-if-let (arg-list (s-match "\\(^/[^ ]*?:\\)[ \t]+\\(\\[\\.\\.\\.\\]\\)" line))
         (eopengrok-make-entry-line (-insert-at 2 "1" arg-list))
-      (insert line "\n"))))
+      (-if-let (arg-list (s-match "\\(^/[^ ]*?:\\)[ \t]+\\(.*\\)" line))
+          (eopengrok-make-entry-line (-insert-at 2 "1" arg-list))
+        (insert line "\n")))))
 
 (defun eopengrok-process-filter (process output)
   (with-current-buffer eopengrok-buffer
@@ -298,6 +301,7 @@
 (eopengrok-define-find file "-p")
 (eopengrok-define-find reference "-r")
 (eopengrok-define-find text "-f")
+(eopengrok-define-find history "-h")
 
 (defun eopengrok-index-files (dir)
   "Index files in a directory."
@@ -322,6 +326,7 @@
           ("\C-csf"   . eopengrok-find-file)
           ("\C-css"   . eopengrok-find-reference)
           ("\C-cst"   . eopengrok-find-text)
+          ("\C-csh"   . eopengrok-find-history)
           ("\C-csl"   . eopengrok-switch-to-buffer)
           ("n"        . eopengrok-next-line)
           ("p"        . eopengrok-previous-line)
