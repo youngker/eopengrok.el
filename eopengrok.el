@@ -39,7 +39,7 @@
 (defconst eopengrok-indexing-buffer "*eopengrok-indexing-buffer*")
 
 (defcustom eopengrok-jar
-  "/home/youngjooez.lee/Projects/opengrok-0.12.1/lib/opengrok.jar"
+  "/home/youngjooez.lee/Projects/opengrok-0.12.1.5/lib/opengrok.jar"
   "DOC."
   :group 'eopengrok)
 
@@ -99,7 +99,7 @@
   (process-send-string (get-process "eopengrok") "n\n"))
 
 (defun eopengrok-index-option-list (dir)
-  (-flatten (list "-Xms128m" "-Xmx1024m"
+  (-flatten (list "-Xmx2048m"
                   "-cp" eopengrok-jar "org.opensolaris.opengrok.index.Indexer"
                   "-c" eopengrok-ctags
                   "-W" (concat dir eopengrok-database)
@@ -120,7 +120,7 @@
                     (directory-file-name dir))))))))
 
 (defun eopengrok-search-option-list (dir find-option text)
-  (list "-Xms128m" "-Xmx1024m"
+  (list "-Xmx2048m"
         "-cp" eopengrok-jar "org.opensolaris.opengrok.search.Search"
         "-R" dir find-option text))
 
