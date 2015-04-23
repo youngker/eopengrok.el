@@ -4,7 +4,7 @@
 
 ;; Author: Youngjoo Lee <youngker@gmail.com>
 ;; Version: 0.1.0
-;; Package-Requires: ((s "1.9.0") (dash "2.10.0"))
+;; Package-Requires: ((s "1.9.0") (dash "2.10.0") (magit "20150320.1639")
 
 ;; This program is free software; you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
@@ -27,16 +27,26 @@
 
 (require 's)
 (require 'dash)
+(require 'magit)
 (require 'cl-lib)
 
 (defvar eopengrok-pending-output nil)
 (defvar eopengrok-last-filename nil)
 (defvar eopengrok-search-text nil)
 (defvar eopengrok-first-match-point nil)
-(defvar eopengrok-time nil)
+(defvar eopengrok-start-time nil)
 
 (defconst eopengrok-buffer "*eopengrok*")
 (defconst eopengrok-indexing-buffer "*eopengrok-indexing-buffer*")
+
+(defconst eopengrok-text-regexp
+  "\\(^/[^ ]*?\\):\\([0-9]+\\)[ \t]+\\[\\(.*\\)\\]")
+
+(defconst eopengrok-file-regexp
+  "\\(^/[^ ]*?\\):\\(\\)[ \t]+\\[\\(\\.\\.\\.\\)\\]")
+
+(defconst eopengrok-history-regexp
+  "\\(^/[^ ]*?\\):[ \t]+\\[\\(\\w+\\)[ \t]\\(.*\\)\\]")
 
 (defcustom eopengrok-jar
   "/home/youngjooez.lee/Projects/opengrok-0.12.1.5/lib/opengrok.jar"
@@ -74,9 +84,9 @@
   "Face for files."
   :group 'eopengrok)
 
-(defface eopengrok-number-face
+(defface eopengrok-info-face
   '((t :inherit font-lock-constant-face))
-  "Face for line number."
+  "Face for info."
   :group 'eopengrok)
 
 (defface eopengrok-source-face
@@ -131,45 +141,61 @@
          (add-text-properties ,start (point) ,props)))))
 
 (defun eopengrok-get-properties (pos)
-  (list (get-text-property pos :file-name)
-        (get-text-property pos :file-number)))
+  (list (get-text-property pos :name)
+        (get-text-property pos :info)))
 
-(defun eopengrok-preview-source ()
+(defun eopengrok-show-source ()
   (with-current-buffer eopengrok-buffer
-    (-if-let* (((file number) (eopengrok-get-properties (point))))
-        (let* ((buffer (find-file-noselect file))
-               (window (display-buffer buffer)))
-          (set-buffer buffer)
-          (save-restriction
-            (widen)
-            (goto-char (point-min))
-            (forward-line (1- number)))
-          (set-window-point window (point))
-          window))))
+    (-when-let* (((file number) (eopengrok-get-properties (point))))
+      (let* ((buffer (find-file-noselect file))
+             (window (display-buffer buffer)))
+        (set-buffer buffer)
+        (save-restriction
+          (widen)
+          (goto-char (point-min))
+          (forward-line (1- number)))
+        (set-window-point window (point))
+        window))))
+
+(defun eopengrok-show-commit ()
+  (-when-let* (((file commit-id) (eopengrok-get-properties (point))))
+    (magit-show-commit commit-id t)))
 
 (defun eopengrok-jump-to-source ()
   (interactive)
-  (-when-let (window (eopengrok-preview-source))
-    (select-window window)
-    (ring-insert find-tag-marker-ring (point-marker))))
+  (save-excursion
+    (beginning-of-line)
+    (if (numberp (get-text-property (point) :info))
+        (-when-let (window (eopengrok-show-source))
+          (select-window window)
+          (ring-insert find-tag-marker-ring (point-marker)))
+      (-when-let (window (display-buffer "*magit-commit*"))
+        (eopengrok-show-commit)
+        (select-window window)))))
+
+(defun eopengrok-number-p (str)
+  (s-matches? "^[0-9]+$" str))
 
 (defun eopengrok-next-line ()
   (interactive)
   (with-current-buffer eopengrok-buffer
-    (-when-let (pos (next-single-property-change (point) :file-number))
-      (while (not (get-text-property pos :file-number))
-        (setq pos (next-single-property-change pos :file-number)))
+    (-when-let (pos (next-single-property-change
+                     (save-excursion (end-of-line) (point)) :info))
       (goto-char pos)
-      (eopengrok-preview-source))))
+      (if (numberp (get-text-property pos :info))
+          (eopengrok-show-source)
+        (eopengrok-show-commit)))))
 
 (defun eopengrok-previous-line ()
   (interactive)
   (with-current-buffer eopengrok-buffer
-    (-when-let (pos (previous-single-property-change (point) :file-number))
-      (while (not (get-text-property pos :file-number))
-        (setq pos (previous-single-property-change pos :file-number)))
+    (-when-let (pos (previous-single-property-change
+                     (save-excursion (beginning-of-line) (point)) :info))
       (goto-char pos)
-      (eopengrok-preview-source))))
+      (beginning-of-line)
+      (if (numberp (get-text-property (point) :info))
+          (eopengrok-show-source)
+        (eopengrok-show-commit)))))
 
 (defun eopengrok-abbreviate-file (file)
   (let* ((start (- (point) (length file)))
@@ -194,7 +220,6 @@
 (defun eopengrok-remove-html-tags (line)
   (->> line
        (replace-regexp-in-string "<[^>]*>" "")
-       (replace-regexp-in-string "]$" "")
        (s-replace-all '(("&lt;" . "<") ("&gt;" . ">")
                         ("&amp;" . "&") ("" . "")))))
 
@@ -206,34 +231,38 @@
                          (match-end 0)
                          'face 'eopengrok-highlight-face line))))
 
-(defun eopengrok-make-entry-line (arg-list)
-  (-let* (((_ file number line) arg-list)
-          (file (propertize (replace-regexp-in-string ":$" "" file)
-                            'face 'eopengrok-file-face))
-          (number (propertize number
-                              'face 'eopengrok-number-face))
-          (line (propertize (replace-regexp-in-string "^\\[" "" line)
-                            'face 'eopengrok-source-face)))
-    (unless (string= file eopengrok-last-filename)
-      (insert (format "\n%s\n" file))
-      (eopengrok-abbreviate-file file)
-      (unless eopengrok-first-match-point
-        (setq eopengrok-first-match-point (point))))
-    (eopengrok-properties-region
-     (list :file-name (expand-file-name file)
-           :file-number (string-to-number number))
-     (eopengrok-text-highlight line)
-     (insert (concat (format "%05s" number) " " line "\n")))
-    (setq eopengrok-last-filename file)))
+(defun eopengrok-print-line (arg-list)
+  (with-current-buffer eopengrok-buffer
+    (-if-let* (((file info src) arg-list)
+               (file (propertize file 'face 'eopengrok-file-face))
+               (info (propertize info 'face 'eopengrok-info-face))
+               (src (propertize src 'face 'eopengrok-source-face)))
+        (progn
+          (unless (string= file eopengrok-last-filename)
+            (insert (format "\n%s\n" file))
+            (eopengrok-abbreviate-file file)
+            (unless eopengrok-first-match-point
+              (setq eopengrok-first-match-point (point))))
+          (eopengrok-properties-region
+           (list :name (expand-file-name file)
+                 :info (cond
+                        ((equal info "") 1)
+                        ((eopengrok-number-p info)
+                         (string-to-number info))
+                        (t info)))
+           (eopengrok-text-highlight src)
+           (insert (concat (format "%08s" info) " " src)))
+          (insert "\n")
+          (setq eopengrok-last-filename file))
+      (insert (car arg-list) "\n"))))
 
 (defun eopengrok-read-line (line)
-  (-if-let (arg-list (s-match "\\(^/[^ ]*?:\\)\\([0-9]+\\)[ \t]+\\(.*\\)" line))
-      (eopengrok-make-entry-line arg-list)
-    (-if-let (arg-list (s-match "\\(^/[^ ]*?:\\)[ \t]+\\(\\[\\.\\.\\.\\]\\)" line))
-        (eopengrok-make-entry-line (-insert-at 2 "1" arg-list))
-      (-if-let (arg-list (s-match "\\(^/[^ ]*?:\\)[ \t]+\\(.*\\)" line))
-          (eopengrok-make-entry-line (-insert-at 2 "1" arg-list))
-        (insert line "\n")))))
+  (cond
+   ((string-match eopengrok-text-regexp line))
+   ((string-match eopengrok-file-regexp line))
+   ((string-match eopengrok-history-regexp line))
+   (t (string-match "\\(.*\\)" line)))
+  (mapcar (lambda (arg) (match-string arg line)) '(1 2 3)))
 
 (defun eopengrok-process-filter (process output)
   (with-current-buffer eopengrok-buffer
@@ -247,29 +276,30 @@
             (goto-char (point-max))
             (-> line
                 eopengrok-remove-html-tags
-                eopengrok-read-line))))
+                eopengrok-read-line
+                eopengrok-print-line))))
       (setq eopengrok-pending-output (substring output pos)))))
 
 (defun eopengrok-process-sentinel (process event)
   (with-current-buffer eopengrok-buffer
-    (setq buffer-read-only nil)
     (goto-char (point-max))
-    (insert (format "\nSearch complete.  Search time = %.2f seconds.\n"
-                    (float-time (time-subtract (current-time)
-                                               eopengrok-time))))
+    (let ((buffer-read-only nil))
+      (insert (format "\nSearch complete.  Search time = %.2f seconds.\n"
+                      (float-time (time-subtract (current-time)
+                                                 eopengrok-start-time)))))
     (goto-char eopengrok-first-match-point)))
 
 (defun eopengrok-init (text dir)
+  (setq eopengrok-start-time (current-time))
+  (setq eopengrok-last-filename nil)
+  (setq eopengrok-first-match-point nil)
   (with-current-buffer eopengrok-buffer
-    (setq eopengrok-time (current-time))
-    (setq buffer-read-only nil)
-    (setq eopengrok-last-filename nil)
-    (setq eopengrok-first-match-point nil)
     (goto-char (point-max))
-    (insert (s-repeat 80 "="))
-    (insert (format "\nFinding text string: %s" text))
-    (insert (format "\nDirectory: %s\n"
-                    (s-chop-suffix eopengrok-database dir)))))
+    (let ((buffer-read-only nil))
+      (insert (s-repeat 80 "="))
+      (insert (format "\nFinding text string: %s" text))
+      (insert (format "\nDirectory: %s\n"
+                      (s-chop-suffix eopengrok-database dir))))))
 
 (defmacro eopengrok-define-find (sym option)
   "Define function."
@@ -293,9 +323,9 @@
                 (with-current-buffer eopengrok-buffer
                   (eopengrok-mode t)
                   (setq buffer-read-only t)
-                  (set-buffer-modified-p nil))
-                (pop-to-buffer eopengrok-buffer)
-                (goto-char (point-max)))))))
+                  (set-buffer-modified-p nil)
+                  (pop-to-buffer eopengrok-buffer)
+                  (goto-char (point-max))))))))
 
 (eopengrok-define-find definition "-d")
 (eopengrok-define-find file "-p")
@@ -311,9 +341,9 @@
          eopengrok-indexing-buffer
          "java"
          (eopengrok-index-option-list (expand-file-name dir)))
-  (with-current-buffer eopengrok-indexing-buffer)
-  (pop-to-buffer eopengrok-indexing-buffer)
-  (goto-char (point-max)))
+  (with-current-buffer eopengrok-indexing-buffer
+    (pop-to-buffer eopengrok-indexing-buffer)
+    (goto-char (point-max))))
 
 (defvar eopengrok-mode-map nil
   "Keymap for eopengrok minor mode.")
