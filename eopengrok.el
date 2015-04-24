@@ -159,6 +159,8 @@
 
 (defun eopengrok-show-commit ()
   (-when-let* (((file commit-id) (eopengrok-get-properties (point))))
+    (setq default-directory (file-name-directory file))
+    (magit-git-string "rev-parse" "--show-toplevel")
     (magit-show-commit commit-id t)))
 
 (defun eopengrok-jump-to-source ()
@@ -174,7 +176,7 @@
         (select-window window)))))
 
 (defun eopengrok-number-p (str)
-  (s-matches? "^[0-9]+$" str))
+  (< (length str) 8))
 
 (defun eopengrok-next-line ()
   (interactive)
