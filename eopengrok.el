@@ -169,13 +169,15 @@
   (interactive)
   (save-excursion
     (beginning-of-line)
-    (if (numberp (get-text-property (point) :info))
-        (-when-let (window (eopengrok-show-source))
-          (select-window window)
-          (ring-insert find-tag-marker-ring (point-marker)))
-      (-when-let (window (display-buffer "*magit-commit*"))
-        (eopengrok-show-commit)
-        (select-window window)))))
+    (-when-let (info (get-text-property (point) :info))
+      (if (numberp info)
+          (-when-let (window (eopengrok-show-source))
+            (select-window window)
+            (ring-insert find-tag-marker-ring (point-marker)))
+        (progn
+          (eopengrok-show-commit)
+          (-when-let (window (display-buffer "*magit-commit*"))
+            (select-window window)))))))
 
 (defun eopengrok-number-p (str)
   (< (length str) 8))
