@@ -127,7 +127,9 @@
           (throw 'done (concat dir eopengrok-database)))
         (setq dir (file-name-as-directory
                    (file-name-directory
-                    (directory-file-name dir))))))))
+                    (directory-file-name dir))))
+        (when (string= dir "/")
+          (error "can't find a configuration.xml"))))))
 
 (defun eopengrok-search-option-list (dir find-option text)
   (list "-Xmx2048m"
@@ -289,7 +291,8 @@
       (insert (format "\nSearch complete.  Search time = %.2f seconds.\n"
                       (float-time (time-subtract (current-time)
                                                  eopengrok-start-time)))))
-    (goto-char eopengrok-first-match-point)))
+    (when eopengrok-first-match-point
+      (goto-char eopengrok-first-match-point))))
 
 (defun eopengrok-init (text dir)
   (setq eopengrok-start-time (current-time))
