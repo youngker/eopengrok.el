@@ -49,7 +49,7 @@
   "\\(^/[^ ]*?\\):[ \t]+\\[\\(\\w+\\)[ \t]\\(.*\\)\\]")
 
 (defcustom eopengrok-jar
-  "/home/youngjooez.lee/Projects/opengrok-0.12.1.5/lib/opengrok.jar"
+  "/Users/youngker/Projects/opengrok-0.12.1.5/lib/opengrok.jar"
   "DOC."
   :group 'eopengrok)
 

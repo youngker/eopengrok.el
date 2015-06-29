@@ -1,7 +1,0 @@
-(source "melpa" "http://melpa.milkbox.net/packages/")
-
-(package-file "eopengrok.el")
-
-(development
-  (depends-on "ecukes")
-  (depends-on "espuds"))

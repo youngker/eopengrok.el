@@ -1,43 +1,48 @@
-# eopengrok.el [![Build Status](https://secure.travis-ci.org/magnars/eopengrok.el.png)](http://travis-ci.org/magnars/eopengrok.el)
+# eopengrok.el
 
 opengrok interface for emacs
 
+## ScreenShot
+
+- **reference**
+<img align="center" src="https://raw.github.com/youngker/eopengrok.el/master/eopengrok.png">
+
+- **git history**
+<img align="center" src="https://raw.github.com/youngker/eopengrok.el/master/eopengrok-git.png">
+
 ## Installation
 
-I highly recommend installing eopengrok through elpa.
+Requirements
 
-It's available on [marmalade](http://marmalade-repo.org/) and
-[melpa](http://melpa.milkbox.net/):
+- **Java 1.7**
 
-    M-x package-install eopengrok
+- **Exuberant ctags**
+  [http://ctags.sourceforge.net](http://ctags.sourceforge.net)
 
-You can also install the dependencies on your own, and just dump
-eopengrok in your path somewhere:
+- **Opengrok**
+  Latest release from [https://github.com/OpenGrok/OpenGrok/releases](https://github.com/OpenGrok/OpenGrok/releases)
 
- - <a href="https://github.com/magnars/s.el">s.el</a>
- - <a href="https://github.com/magnars/dash.el">dash.el</a>
+Edit eopengrok.el
 
-## Contribute
+```elisp
+(defcustom eopengrok-jar
+  "/Users/youngker/Projects/opengrok-0.12.1.5/lib/opengrok.jar"
+  :group 'eopengrok)
 
-Yes, please do. :-)
+(defcustom eopengrok-ctags
+  "/usr/local/bin/ctags"
+  :group 'eopengrok)
+```
 
-All changes must be accompanied by feature tests, or I might break it later.
-They are written in [Ecukes](http://ecukes.info), a Cucumber for Emacs.
-
-You'll find the repo at:
-
-    https://github.com/magnars/eopengrok.el
-
-To fetch the test dependencies, install
-[carton](https://github.com/rejeep/carton) if you haven't already,
-then:
-
-    $ cd /path/to/eopengrok
-    $ carton
-
-Run the tests with:
-
-    $ ./run-tests.sh
+Add your .el
+```elisp
+(define-key global-map (kbd "C-c s d") 'eopengrok-find-definition)
+(define-key global-map (kbd "C-c s f") 'eopengrok-find-file)
+(define-key global-map (kbd "C-c s s") 'eopengrok-find-reference)
+(define-key global-map (kbd "C-c s t") 'eopengrok-find-text)
+(define-key global-map (kbd "C-c s h") 'eopengrok-find-history)
+(define-key global-map (kbd "C-c s I") 'eopengrok-index-files)
+```
 
 ## License
 
