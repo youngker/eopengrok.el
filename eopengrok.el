@@ -4,7 +4,7 @@
 
 ;; Author: Youngjoo Lee <youngker@gmail.com>
 ;; Version: 0.1.0
-;; Package-Requires: ((s "1.9.0") (dash "2.10.0") (magit "20150320.1639")
+;; Package-Requires: ((s "1.9.0") (dash "2.10.0") (magit "20150716.829")
 
 ;; This program is free software; you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
@@ -163,11 +163,11 @@
         (set-window-point window (point))
         window))))
 
-(defun eopengrok-show-commit ()
+(defun eopengrok-show-commit (&optional noselect)
   (-when-let* (((file commit-id) (eopengrok-get-properties (point))))
     (setq default-directory (file-name-directory file))
     (magit-git-string "rev-parse" "--show-toplevel")
-    (magit-show-commit commit-id t)))
+    (magit-show-commit commit-id noselect)))
 
 (defun eopengrok-jump-to-source ()
   (interactive)
@@ -178,10 +178,7 @@
           (-when-let (window (eopengrok-show-source))
             (select-window window)
             (ring-insert find-tag-marker-ring (point-marker)))
-        (progn
-          (eopengrok-show-commit)
-          (-when-let (window (display-buffer "*magit-commit*"))
-            (select-window window)))))))
+        (eopengrok-show-commit)))))
 
 (defun eopengrok-number-p (str)
   (< (length str) 8))
@@ -194,7 +191,7 @@
       (goto-char pos)
       (if (numberp (get-text-property pos :info))
           (eopengrok-show-source)
-        (eopengrok-show-commit)))))
+        (eopengrok-show-commit t)))))
 
 (defun eopengrok-previous-line ()
   (interactive)
@@ -205,7 +202,7 @@
       (beginning-of-line)
       (if (numberp (get-text-property (point) :info))
           (eopengrok-show-source)
-        (eopengrok-show-commit)))))
+        (eopengrok-show-commit t)))))
 
 (defun eopengrok-abbreviate-file (file)
   (let* ((start (- (point) (length file)))
