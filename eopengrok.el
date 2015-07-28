@@ -79,6 +79,10 @@
   "DOC."
   :group 'eopengrok)
 
+(defcustom eopengrok-line-length 500
+  "DOC."
+  :group 'eopengrok)
+
 (defface eopengrok-file-face
   '((t :inherit font-lock-function-name-face))
   "Face for files."
@@ -223,6 +227,12 @@
       (decf amount (funcall advance-word)))
     (goto-char end)))
 
+(defun eopengrok-truncate-line (line)
+  (let ((len eopengrok-line-length))
+    (if (> (length line) len)
+        (format "%s...]" (substring line 0 (- len 4)))
+      line)))
+
 (defun eopengrok-remove-html-tags (line)
   (->> line
        (replace-regexp-in-string "<[^>]*>" "")
@@ -281,6 +291,7 @@
             (setq pos (match-end 0))
             (goto-char (point-max))
             (-> line
+                eopengrok-truncate-line
                 eopengrok-remove-html-tags
                 eopengrok-read-line
                 eopengrok-print-line))))
