@@ -40,13 +40,13 @@
 (defconst eopengrok-indexing-buffer "*eopengrok-indexing-buffer*")
 
 (defconst eopengrok-text-regexp
-  "\\(^/[^ ]*?\\):\\([0-9]+\\)[ \t]+\\[\\(.*\\)\\]")
+  "\\([^ ]*?\\):\\([0-9]+\\)[ \t]+\\[\\(.*\\)\\]")
 
 (defconst eopengrok-file-regexp
-  "\\(^/[^ ]*?\\):\\(\\)[ \t]+\\[\\(\\.\\.\\.\\)\\]")
+  "\\([^ ]*?\\):\\(\\)[ \t]+\\[\\(\\.\\.\\.\\)\\]")
 
 (defconst eopengrok-history-regexp
-  "\\(^/[^ ]*?\\):[ \t]+\\[\\(\\w+\\)[ \t]\\(.*\\)\\]")
+  "\\([^ ]*?\\):[ \t]+\\[\\(\\w+\\)[ \t]\\(.*\\)\\]")
 
 (defcustom eopengrok-jar
   "/Users/youngker/Projects/opengrok-0.12.1.5/lib/opengrok.jar"
