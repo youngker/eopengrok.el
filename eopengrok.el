@@ -1,4 +1,4 @@
-;;; eopengrok.el --- opengrok interface for emacs
+;;; eopengrok.el --- opengrok interface for emacs -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2015 Youngjoo Lee
 
