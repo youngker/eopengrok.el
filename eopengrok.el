@@ -5,7 +5,7 @@
 ;; Author: Youngjoo Lee <youngker@gmail.com>
 ;; Version: 0.2.0
 ;; Keywords: tools
-;; Package-Requires: ((s "1.9.0") (dash "2.10.0") (magit "2.1.0"))
+;; Package-Requires: ((s "1.9.0") (dash "2.10.0") (magit "2.1.0") (cl-lib "0.5"))
 
 ;; This program is free software; you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
@@ -407,17 +407,17 @@ https://github.com/youngker/eopengrok.el\n") :error)))
 (unless eopengrok-mode-map
   (setq eopengrok-mode-map (make-sparse-keymap)))
 
-(--each '(("\C-csI"   . eopengrok-index-files)
-          ("\C-csd"   . eopengrok-find-definition)
-          ("\C-csf"   . eopengrok-find-file)
-          ("\C-css"   . eopengrok-find-reference)
-          ("\C-cst"   . eopengrok-find-text)
-          ("\C-csh"   . eopengrok-find-history)
-          ("\C-csl"   . eopengrok-switch-to-buffer)
-          ("n"        . eopengrok-next-line)
-          ("p"        . eopengrok-previous-line)
-          ("y"        . eopengrok-say-yes)
-          ("<return>" . eopengrok-jump-to-source))
+(--each '(("\C-c\C-csI" . eopengrok-index-files)
+          ("\C-c\C-csd" . eopengrok-find-definition)
+          ("\C-c\C-csf" . eopengrok-find-file)
+          ("\C-c\C-css" . eopengrok-find-reference)
+          ("\C-c\C-cst" . eopengrok-find-text)
+          ("\C-c\C-csh" . eopengrok-find-history)
+          ("\C-c\C-csl" . eopengrok-switch-to-buffer)
+          ("n"          . eopengrok-next-line)
+          ("p"          . eopengrok-previous-line)
+          ("y"          . eopengrok-say-yes)
+          ("<return>"   . eopengrok-jump-to-source))
   (define-key eopengrok-mode-map (read-kbd-macro (car it)) (cdr it)))
 
 (define-minor-mode eopengrok-mode
