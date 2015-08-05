@@ -1,4 +1,4 @@
-# eopengrok.el
+# eopengrok.el [![MELPA](http://melpa.org/packages/eopengrok-badge.svg)](http://melpa.org/#/eopengrok)
 
 opengrok interface for emacs
 
@@ -12,6 +12,10 @@ opengrok interface for emacs
 
 ## Installation
 
+It's available on [Melpa](http://melpa.milkbox.net/):
+
+    M-x package-install eopengrok
+
 Requirements
 
 - **Java 1.7**
@@ -22,26 +26,20 @@ Requirements
 - **Opengrok**
   Latest release from [https://github.com/OpenGrok/OpenGrok/releases](https://github.com/OpenGrok/OpenGrok/releases)
 
-Edit eopengrok.el
+You can add these lines to your init file.
 
 ```elisp
-(defcustom eopengrok-jar
-  "/Users/youngker/Projects/opengrok-0.12.1.5/lib/opengrok.jar"
-  :group 'eopengrok)
+(require 'eopengrok)
+(setq eopengrok-jar   "/path/to/opengrok-0.12.1.5/lib/opengrok.jar")
+(setq eopengrok-ctags "/path/to/ctags")
 
-(defcustom eopengrok-ctags
-  "/usr/local/bin/ctags"
-  :group 'eopengrok)
-```
-
-Add your .el
-```elisp
+(define-key global-map (kbd "C-c s I") 'eopengrok-index-files)
 (define-key global-map (kbd "C-c s d") 'eopengrok-find-definition)
 (define-key global-map (kbd "C-c s f") 'eopengrok-find-file)
 (define-key global-map (kbd "C-c s s") 'eopengrok-find-reference)
 (define-key global-map (kbd "C-c s t") 'eopengrok-find-text)
 (define-key global-map (kbd "C-c s h") 'eopengrok-find-history)
-(define-key global-map (kbd "C-c s I") 'eopengrok-index-files)
+(define-key global-map (kbd "C-c s l") 'eopengrok-switch-to-buffer)
 ```
 
 ## License
