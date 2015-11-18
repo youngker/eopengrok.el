@@ -175,13 +175,13 @@
         (set-window-point window (point))
         window))))
 
-(defun eopengrok-show-commit (&optional noselect)
+(defun eopengrok-show-commit ()
   "Display magit-show-commit.
 if NOSELECT flag is nil, move point to magit window."
   (-when-let* (((file commit-id) (eopengrok-get-properties (point))))
     (setq default-directory (file-name-directory file))
     (magit-git-string "rev-parse" "--show-toplevel")
-    (magit-show-commit commit-id noselect)))
+    (magit-show-commit commit-id)))
 
 (defun eopengrok-jump-to-source ()
   "Jump point to the other window."
@@ -208,7 +208,8 @@ if NOSELECT flag is nil, move point to magit window."
       (goto-char pos)
       (if (numberp (get-text-property pos :info))
           (eopengrok-show-source)
-        (eopengrok-show-commit t)))))
+        (let ((magit-display-buffer-noselect t))
+          (eopengrok-show-commit))))))
 
 (defun eopengrok-previous-line ()
   "Move point to the previous search result, if one exists."
@@ -220,7 +221,8 @@ if NOSELECT flag is nil, move point to magit window."
       (beginning-of-line)
       (if (numberp (get-text-property (point) :info))
           (eopengrok-show-source)
-        (eopengrok-show-commit t)))))
+        (let ((magit-display-buffer-noselect t))
+          (eopengrok-show-commit))))))
 
 (defun eopengrok-abbreviate-file (file)
   "Abbreviate FILE name."
