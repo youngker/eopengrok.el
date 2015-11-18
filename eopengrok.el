@@ -268,12 +268,25 @@ if NOSELECT flag is nil, move point to magit window."
                          (match-end 0)
                          'face 'eopengrok-highlight-face line))))
 
+(defun eopengrok-handle-mouse (event)
+  "Handle mouse click EVENT."
+  (interactive "e")
+  (eopengrok-jump-to-source))
+
+(defvar eopengrok-mouse-map
+  (let ((map (make-sparse-keymap)))
+    (define-key map [mouse-1] #'eopengrok-handle-mouse)
+    map))
+
 (defun eopengrok-print-line (arg-list)
   "Print line from ARG-LIST with their propertize."
   (with-current-buffer eopengrok-buffer
     (-if-let* (((file info src) arg-list)
                (file (propertize file 'face 'eopengrok-file-face))
-               (info (propertize info 'face 'eopengrok-info-face))
+               (info (propertize info
+                                 'face 'eopengrok-info-face
+                                 'mouse-face 'highlight
+                                 'keymap eopengrok-mouse-map))
                (src (propertize src 'face 'eopengrok-source-face)))
         (progn
           (unless (string= file eopengrok-last-filename)
