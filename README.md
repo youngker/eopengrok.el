@@ -12,7 +12,7 @@ opengrok interface for emacs
 
 ## Installation
 
-It's available on [Melpa](http://melpa.milkbox.net/):
+It's available on [Melpa](https://melpa.org/):
 
     M-x package-install eopengrok
 
