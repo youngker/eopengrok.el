@@ -33,14 +33,23 @@ You can add these lines to your init file.
 (setq eopengrok-jar   "/path/to/opengrok-0.12.1.5/lib/opengrok.jar")
 (setq eopengrok-ctags "/path/to/ctags")
 
-(define-key global-map (kbd "C-c s I") 'eopengrok-index-files)
+(define-key global-map (kbd "C-c s I") 'eopengrok-make-index)
 (define-key global-map (kbd "C-c s d") 'eopengrok-find-definition)
 (define-key global-map (kbd "C-c s f") 'eopengrok-find-file)
 (define-key global-map (kbd "C-c s s") 'eopengrok-find-reference)
 (define-key global-map (kbd "C-c s t") 'eopengrok-find-text)
 (define-key global-map (kbd "C-c s h") 'eopengrok-find-history)
-(define-key global-map (kbd "C-c s l") 'eopengrok-switch-to-buffer)
+(define-key global-map (kbd "C-c s b") 'eopengrok-resume)
 ```
+
+
+Key bindings
+
+Key | Function
+--- | --------
+<kbd>c</kbd> | eopengrok-kill-process
+<kbd>n</kbd> | eopengrok-next-line
+<kbd>p</kbd> | eopengrok-previous-line
 
 ## License
 
