@@ -121,12 +121,15 @@
 (defun eopengrok-index-option-list (dir)
   "Opengrok index option list, target is DIR."
   (-flatten (list "-Xmx2048m"
-                  "-cp" eopengrok-jar "org.opensolaris.opengrok.index.Indexer"
+                  "-jar" eopengrok-jar
+                  "-r" "on"
                   "-c" eopengrok-ctags
+                  "-a" "on"
                   "-W" (concat dir eopengrok-database)
-                  "-d" (concat dir ".opengrok")
+                  "-S" "-P"
                   "-s" dir
-                  "-C" "-S" "-H"
+                  "-d" (concat dir ".opengrok")
+                  "-H"
                   (--mapcat (list "-I" it) eopengrok-indexer-suffixes)
                   (--mapcat (list "-i" it) eopengrok-ignored-dir))))
 
