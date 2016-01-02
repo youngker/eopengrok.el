@@ -3,7 +3,7 @@
 ;; Copyright (C) 2015 Youngjoo Lee
 
 ;; Author: Youngjoo Lee <youngker@gmail.com>
-;; Version: 0.2.0
+;; Version: 0.3.0
 ;; Keywords: tools
 ;; Package-Requires: ((s "1.9.0") (dash "2.10.0") (magit "2.1.0") (cl-lib "0.5"))
 
@@ -43,7 +43,7 @@
 (defconst eopengrok-buffer "*eopengrok*")
 (defconst eopengrok-indexing-buffer "*eopengrok-indexing-buffer*")
 
-(defconst eopengrok-text-regexp
+(defconst eopengrok-source-regexp
   "\\([^ ]*?\\):\\([0-9]+\\)[ \t]+\\[\\(.*\\)\\]")
 
 (defconst eopengrok-file-regexp
@@ -51,6 +51,9 @@
 
 (defconst eopengrok-history-regexp
   "\\([^ ]*?\\):[ \t]+\\[\\(\\w+\\)[ \t]\\(.*\\)\\]")
+
+(defconst eopengrok-unknown-regexp
+  "\\([^ ]*?\\):\\(\\)[ \t]+\\[\\(.*\\)\\]")
 
 (defcustom eopengrok-jar
   nil
@@ -62,21 +65,14 @@
   "The location of file `ctags'."
   :group 'eopengrok)
 
-(defcustom eopengrok-database
+(defcustom eopengrok-configuration
   ".opengrok/configuration.xml"
   "Configuration file."
   :group 'eopengrok)
 
-(defcustom eopengrok-indexer-suffixes
-  '("*.c" "*.h" "*.cpp" "*.hpp" "*.cc" "*.hh" "*.m" "*.xml" "*.mk" "*.py"
-    "*.rb" "*.java" "*.js" "*.el")
-  "Indexer suffixes."
-  :group 'eopengrok)
-
 (defcustom eopengrok-ignored-dir
-  '("CVS" "RCS" "SCCS" ".hg" ".bzr" ".cdv" ".pc" ".svn" "_MTN" "_darcs"
-    "_sgbak" "debian" ".opengrok" "out" ".repo")
-  "Ignored dir."
+  '(".opengrok" "out" "*.so" "*.a" "*.o" "*.gz" "*.bz2" "*.jar" "*.zip" "*.class")
+  "Ignored file or directory."
   :group 'eopengrok)
 
 (defcustom eopengrok-abbreviate-filename 80
@@ -107,16 +103,19 @@
   "Face for highlight item."
   :group 'eopengrok)
 
-(defun eopengrok-switch-to-buffer ()
+(defun eopengrok-resume ()
   "Open *eopengrok* buffer."
   (interactive)
   (when (get-buffer eopengrok-buffer)
     (pop-to-buffer eopengrok-buffer)))
 
-(defun eopengrok-say-yes ()
-  "Say yes."
+(defun eopengrok-kill-process ()
+  "Kill process."
   (interactive)
-  (process-send-string (get-process "eopengrok") "n\n"))
+  (-when-let* ((proc (get-process "eopengrok"))
+               (status (process-status proc))
+               (run (eq status 'run)))
+    (kill-process proc)))
 
 (defun eopengrok-index-option-list (dir)
   "Opengrok index option list, target is DIR."
@@ -125,32 +124,31 @@
                   "-r" "on"
                   "-c" eopengrok-ctags
                   "-a" "on"
-                  "-W" (concat dir eopengrok-database)
+                  "-W" (concat dir eopengrok-configuration)
                   "-S" "-P"
                   "-s" dir
                   "-d" (concat dir ".opengrok")
-                  "-H"
-                  (--mapcat (list "-I" it) eopengrok-indexer-suffixes)
+                  "-H" "-q"
                   (--mapcat (list "-i" it) eopengrok-ignored-dir))))
 
-(defun eopengrok-search-configuration ()
+(defun eopengrok-get-configuration ()
   "Search for Project configuration.xml."
   (let ((dir (expand-file-name default-directory)))
     (catch 'done
       (while dir
-        (when (file-exists-p (concat dir eopengrok-database))
-          (throw 'done (concat dir eopengrok-database)))
+        (when (file-exists-p (concat dir eopengrok-configuration))
+          (throw 'done (concat dir eopengrok-configuration)))
         (setq dir (file-name-as-directory
                    (file-name-directory
                     (directory-file-name dir))))
         (when (string-match "^\\(/\\|[A-Za-z]:[\\/]\\)$" dir)
           (error "Can't find a configuration.xml"))))))
 
-(defun eopengrok-search-option-list (dir find-option text)
-  "Opengrok search option list with DIR FIND-OPTION TEXT."
+(defun eopengrok-search-option-list (configuration find-option text)
+  "Opengrok search option list with CONFIGURATION FIND-OPTION TEXT."
   (list "-Xmx2048m"
         "-cp" eopengrok-jar "org.opensolaris.opengrok.search.Search"
-        "-R" dir find-option text))
+        "-R" configuration find-option text))
 
 (defmacro eopengrok-properties-region (props &rest body)
   "Add PROPS and Execute BODY to all the text it insert."
@@ -179,8 +177,7 @@
         window))))
 
 (defun eopengrok-show-commit ()
-  "Display magit-show-commit.
-if NOSELECT flag is nil, move point to magit window."
+  "Display magit-show-commit."
   (-when-let* (((file commit-id) (eopengrok-get-properties (point))))
     (setq default-directory (file-name-directory file))
     (magit-git-string "rev-parse" "--show-toplevel")
@@ -260,7 +257,7 @@ if NOSELECT flag is nil, move point to magit window."
   (->> line
        (replace-regexp-in-string "<[^>]*>" "")
        (s-replace-all '(("&lt;" . "<") ("&gt;" . ">")
-                        ("&amp;" . "&") ("" . "")))))
+                        ("&amp;" . "&") ("\r" . "")))))
 
 (defun eopengrok-text-highlight (line)
   "Highlighting Text from LINE."
@@ -313,9 +310,10 @@ if NOSELECT flag is nil, move point to magit window."
 (defun eopengrok-read-line (line)
   "Read the LINE and return the list for print."
   (cond
-   ((string-match eopengrok-text-regexp line))
-   ((string-match eopengrok-file-regexp line))
+   ((string-match eopengrok-source-regexp line))
    ((string-match eopengrok-history-regexp line))
+   ((string-match eopengrok-file-regexp line))
+   ((string-match eopengrok-unknown-regexp line))
    (t (string-match "\\(.*\\)" line)))
   (mapcar (lambda (arg) (match-string arg line)) '(1 2 3)))
 
@@ -342,6 +340,7 @@ if NOSELECT flag is nil, move point to magit window."
   (with-current-buffer eopengrok-buffer
     (goto-char (point-max))
     (let ((buffer-read-only nil))
+      (setq eopengrok-pending-output nil)
       (insert (format "\nSearch complete.  Search time = %.2f seconds.\n"
                       (float-time (time-subtract (current-time)
                                                  eopengrok-start-time)))))
@@ -359,7 +358,7 @@ if NOSELECT flag is nil, move point to magit window."
       (insert (s-repeat 80 "="))
       (insert (format "\n%s%s" kind text))
       (insert (format "\nDirectory: %s\n"
-                      (s-chop-suffix eopengrok-database dir))))))
+                      (s-chop-suffix eopengrok-configuration dir))))))
 
 (defmacro eopengrok-define-find (sym option)
   "Make function with SYM and OPTION."
@@ -369,19 +368,20 @@ if NOSELECT flag is nil, move point to magit window."
     `(progn
        (defun ,fun (text) ,doc
               (interactive (list (read-string ,str (current-word))))
-              (let* ((dir (eopengrok-search-configuration))
+              (let* ((conf (eopengrok-get-configuration))
                      (proc (apply 'start-process
                                   "eopengrok"
                                   eopengrok-buffer
                                   "java"
                                   (eopengrok-search-option-list
-                                   dir ,option text))))
-                (eopengrok-init text dir ,str)
+                                   conf ,option text))))
+                (eopengrok-init text conf ,str)
                 (setq eopengrok-search-text text)
                 (set-process-filter proc 'eopengrok-process-filter)
                 (set-process-sentinel proc 'eopengrok-process-sentinel)
                 (with-current-buffer eopengrok-buffer
                   (eopengrok-mode t)
+                  (setq truncate-lines t)
                   (setq buffer-read-only t)
                   (set-buffer-modified-p nil)
                   (pop-to-buffer eopengrok-buffer)
@@ -393,17 +393,31 @@ if NOSELECT flag is nil, move point to magit window."
 (eopengrok-define-find text "-f")
 (eopengrok-define-find history "-h")
 
-(defun eopengrok-index-files (dir)
-  "Index files in a DIR."
-  (interactive "DIndex files in directory: ")
-  (apply 'start-process
-         "eopengrok-indexer"
-         eopengrok-indexing-buffer
-         "java"
-         (eopengrok-index-option-list (expand-file-name dir)))
+(defun eopengrok-index-process-sentinel (process event)
+  "Handle eopengrok PROCESS EVENT."
   (with-current-buffer eopengrok-indexing-buffer
-    (pop-to-buffer eopengrok-indexing-buffer)
-    (goto-char (point-max))))
+    (goto-char (point-max))
+    (let ((buffer-read-only nil))
+      (insert (format "\nIndexing complete.  Indexing time = %.2f seconds.\n"
+                      (float-time (time-subtract (current-time)
+                                                 eopengrok-start-time)))))))
+
+(defun eopengrok-make-index (dir)
+  "Make an Index file in a DIR."
+  (interactive "DIndex files in directory: ")
+  (let ((proc (apply 'start-process
+                     "eopengrok-indexer"
+                     eopengrok-indexing-buffer
+                     "java"
+                     (eopengrok-index-option-list (expand-file-name dir)))))
+    (set-process-sentinel proc 'eopengrok-index-process-sentinel)
+    (with-current-buffer eopengrok-indexing-buffer
+      (setq buffer-read-only t)
+      (setq eopengrok-start-time (current-time))
+      (goto-char (point-max))
+      (let ((buffer-read-only nil))
+        (insert (s-repeat 80 "=")))
+      (pop-to-buffer eopengrok-indexing-buffer))))
 
 (defun eopengrok-startup-asserts ()
   "Check the requirements."
@@ -425,16 +439,16 @@ https://github.com/youngker/eopengrok.el\n") :error)))
 (unless eopengrok-mode-map
   (setq eopengrok-mode-map (make-sparse-keymap)))
 
-(--each '(("\C-c\C-csI" . eopengrok-index-files)
+(--each '(("\C-c\C-csI" . eopengrok-make-index)
           ("\C-c\C-csd" . eopengrok-find-definition)
           ("\C-c\C-csf" . eopengrok-find-file)
           ("\C-c\C-css" . eopengrok-find-reference)
           ("\C-c\C-cst" . eopengrok-find-text)
           ("\C-c\C-csh" . eopengrok-find-history)
-          ("\C-c\C-csl" . eopengrok-switch-to-buffer)
+          ("\C-c\C-csb" . eopengrok-resume)
           ("n"          . eopengrok-next-line)
           ("p"          . eopengrok-previous-line)
-          ("y"          . eopengrok-say-yes)
+          ("c"          . eopengrok-kill-process)
           ("<return>"   . eopengrok-jump-to-source))
   (define-key eopengrok-mode-map (read-kbd-macro (car it)) (cdr it)))
 
