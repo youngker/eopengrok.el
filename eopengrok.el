@@ -1,6 +1,6 @@
 ;;; eopengrok.el --- opengrok interface for emacs
 
-;; Copyright (C) 2015 Youngjoo Lee
+;; Copyright (C) 2016 Youngjoo Lee
 
 ;; Author: Youngjoo Lee <youngker@gmail.com>
 ;; Version: 0.3.0
