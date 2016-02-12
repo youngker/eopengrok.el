@@ -23,15 +23,14 @@ It's available on [Melpa](https://melpa.org/):
 
 Requirements
 
-- **Java 1.8**
+- Java 1.8
 
-- **Exuberant ctags**
+- Exuberant ctags
   [http://ctags.sourceforge.net](http://ctags.sourceforge.net)
 
-- **clj-opengrok**
-  clj-opengrok from [https://github.com/youngker/clj-opengrok](https://github.com/youngker/clj-opengrok)
+- [clj-opengrok](https://github.com/youngker/clj-opengrok)
 
-  Download clj-opengrok-0.3.0 [clj-opengrok-0.3.0-standalone.jar.zip](https://github.com/youngker/clj-opengrok/files/126413/clj-opengrok-0.3.0-standalone.jar.zip)
+  download [clj-opengrok-0.3.0-standalone.jar.zip](https://github.com/youngker/clj-opengrok/files/126413/clj-opengrok-0.3.0-standalone.jar.zip)
 
 You can add these lines to your init file.
 
