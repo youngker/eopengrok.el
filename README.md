@@ -2,13 +2,18 @@
 
 opengrok interface for emacs
 
+
+- Change to clj-opengrok from OpenGrok.
+- Use pagination to show 25 entries at a time.
+- Improved search speed.
+
 ## ScreenShot
 
-- **reference**
-<img align="center" src="https://raw.github.com/youngker/eopengrok.el/master/eopengrok.png">
+- fulltext
+<img align="center" src="https://raw.github.com/youngker/eopengrok.el/master/img/fulltext.png">
 
-- **git history**
-<img align="center" src="https://raw.github.com/youngker/eopengrok.el/master/eopengrok-git.png">
+- history
+<img align="center" src="https://raw.github.com/youngker/eopengrok.el/master/img/history.png">
 
 ## Installation
 
@@ -18,19 +23,21 @@ It's available on [Melpa](https://melpa.org/):
 
 Requirements
 
-- **Java 1.7**
+- **Java 1.8**
 
 - **Exuberant ctags**
   [http://ctags.sourceforge.net](http://ctags.sourceforge.net)
 
-- **Opengrok**
-  Latest release from [https://github.com/OpenGrok/OpenGrok/releases](https://github.com/OpenGrok/OpenGrok/releases)
+- **clj-opengrok**
+  clj-opengrok from [https://github.com/youngker/clj-opengrok](https://github.com/youngker/clj-opengrok)
+
+  Download clj-opengrok-0.3.0 [clj-opengrok-0.3.0-standalone.jar.zip](https://github.com/youngker/clj-opengrok/files/126413/clj-opengrok-0.3.0-standalone.jar.zip)
 
 You can add these lines to your init file.
 
 ```elisp
 (require 'eopengrok)
-(setq eopengrok-jar   "/path/to/opengrok-0.12.1.5/lib/opengrok.jar")
+(setq eopengrok-jar   "/path/to/clj-opengrok-0.3.0-standalone.jar")
 (setq eopengrok-ctags "/path/to/ctags")
 
 (define-key global-map (kbd "C-c s I") 'eopengrok-make-index)
@@ -47,9 +54,12 @@ Key bindings
 
 Key | Function
 --- | --------
-<kbd>c</kbd> | eopengrok-kill-process
 <kbd>n</kbd> | eopengrok-next-line
 <kbd>p</kbd> | eopengrok-previous-line
+<kbd>f</kbd> | eopengrok-next-page
+<kbd>b</kbd> | eopengrok-previous-page
+<kbd>g</kbd> | eopengrok-goto-page
+<kbd>q</kbd> | eopengrok-kill-process
 
 ## License
 
