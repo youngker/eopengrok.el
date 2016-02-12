@@ -3,7 +3,7 @@
 opengrok interface for emacs
 
 
-- Change to clj-opengrok from OpenGrok.
+- Change to [clj-opengrok](https://github.com/youngker/clj-opengrok) from OpenGrok.
 - Use pagination to show 25 entries at a time.
 - Improved search speed.
 
