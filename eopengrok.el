@@ -3,7 +3,7 @@
 ;; Copyright (C) 2016 Youngjoo Lee
 
 ;; Author: Youngjoo Lee <youngker@gmail.com>
-;; Version: 0.3.0
+;; Version: 0.4.0
 ;; Keywords: tools
 ;; Package-Requires: ((s "1.9.0") (dash "2.10.0") (magit "2.1.0") (cl-lib "0.5"))
 
@@ -22,7 +22,7 @@
 
 ;;; Commentary:
 
-;; opengrok interface for emacs
+;; opengrok interface for Emacs
 ;;
 ;; See documentation on https://github.com/youngker/eopengrok.el
 
@@ -36,28 +36,29 @@
 
 (defvar eopengrok-pending-output nil)
 (defvar eopengrok-last-filename nil)
-(defvar eopengrok-search-text nil)
-(defvar eopengrok-first-match-point nil)
 (defvar eopengrok-start-time nil)
+(defvar eopengrok-search-text nil)
+(defvar eopengrok-current-search nil)
+(defvar eopengrok-current-configuration nil)
+(defvar eopengrok-skip-output-p nil)
 
 (defconst eopengrok-buffer "*eopengrok*")
 (defconst eopengrok-indexing-buffer "*eopengrok-indexing-buffer*")
 
 (defconst eopengrok-source-regexp
-  "\\([^ ]*?\\):\\([0-9]+\\)[ \t]+\\[\\(.*\\)\\]")
-
-(defconst eopengrok-file-regexp
-  "\\([^ ]*?\\):\\(\\)[ \t]+\\[\\(\\.\\.\\.\\)\\]")
+  "^\\([^ ]*?\\):\\([0-9]+\\):\\(.*\\)")
 
 (defconst eopengrok-history-regexp
-  "\\([^ ]*?\\):[ \t]+\\[\\(\\w+\\)[ \t]\\(.*\\)\\]")
+  "^\\([^ ]*?\\)::[ \t]+\\(\\w+\\)\\(.*\\)")
 
-(defconst eopengrok-unknown-regexp
-  "\\([^ ]*?\\):\\(\\)[ \t]+\\[\\(.*\\)\\]")
+(defgroup eopengrok nil
+  "Opengrok interface for emacs."
+  :prefix "eopengrok-"
+  :group 'applications)
 
 (defcustom eopengrok-jar
   nil
-  "The location of file `opengrok.jar'."
+  "The location of file `clj-opengrok.jar'."
   :group 'eopengrok)
 
 (defcustom eopengrok-ctags
@@ -112,15 +113,16 @@
 (defun eopengrok-kill-process ()
   "Kill process."
   (interactive)
-  (-when-let* ((proc (get-process "eopengrok"))
-               (status (process-status proc))
-               (run (eq status 'run)))
-    (kill-process proc)))
+  (-if-let* ((proc (get-process "eopengrok"))
+             (status (process-status proc))
+             (run (eq status 'run)))
+      (kill-process proc)
+    (kill-buffer eopengrok-buffer)))
 
 (defun eopengrok-index-option-list (dir)
   "Opengrok index option list, target is DIR."
   (-flatten (list "-Xmx2048m"
-                  "-jar" eopengrok-jar
+                  "-cp" eopengrok-jar "org.opensolaris.opengrok.index.Indexer"
                   "-r" "on"
                   "-c" eopengrok-ctags
                   "-a" "on"
@@ -146,9 +148,11 @@
 
 (defun eopengrok-search-option-list (configuration find-option text)
   "Opengrok search option list with CONFIGURATION FIND-OPTION TEXT."
-  (list "-Xmx2048m"
-        "-cp" eopengrok-jar "org.opensolaris.opengrok.search.Search"
-        "-R" configuration find-option text))
+  (list "-R" configuration find-option text))
+
+(defun eopengrok-quick-search-option (configuration find-option text)
+  "Opengrok search option list with CONFIGURATION FIND-OPTION TEXT."
+  (format "search %S %S %S %S\n" "-R" configuration find-option text))
 
 (defmacro eopengrok-properties-region (props &rest body)
   "Add PROPS and Execute BODY to all the text it insert."
@@ -224,6 +228,27 @@
         (let ((magit-display-buffer-noselect t))
           (eopengrok-show-commit))))))
 
+(defun eopengrok-send-process (str)
+  "Send STR to process."
+  (eopengrok-display-info)
+  (setq eopengrok-skip-output-p t)
+  (process-send-string (get-process "eopengrok") str))
+
+(defun eopengrok-next-page ()
+  "Next page."
+  (interactive)
+  (eopengrok-send-process "n\n"))
+
+(defun eopengrok-previous-page ()
+  "Previous page."
+  (interactive)
+  (eopengrok-send-process "p\n"))
+
+(defun eopengrok-goto-page (number)
+  "Go to the NUMBER of page."
+  (interactive "nPage number: ")
+  (eopengrok-send-process (concat "g " (number-to-string number) "\n")))
+
 (defun eopengrok-abbreviate-file (file)
   "Abbreviate FILE name."
   (let* ((start (- (point) (length file)))
@@ -261,12 +286,16 @@
 
 (defun eopengrok-text-highlight (line)
   "Highlighting Text from LINE."
-  (let ((pos 0))
-    (while (string-match (concat "\\b" eopengrok-search-text "\\b") line pos)
-      (setq pos (match-end 0))
-      (put-text-property (match-beginning 0)
-                         (match-end 0)
-                         'face 'eopengrok-highlight-face line))))
+  (let (beg end)
+    (with-temp-buffer
+      (insert (propertize line 'read-only nil))
+      (goto-char (point-min))
+      (while (and (re-search-forward
+                   (s-replace "\"" "" eopengrok-search-text) nil t)
+                  (> (- (setq end (match-end 0))
+                        (setq beg (match-beginning 0))) 0))
+        (add-text-properties beg end '(face eopengrok-highlight-face)))
+      (buffer-string))))
 
 (defun eopengrok-handle-mouse (event)
   "Handle mouse click EVENT."
@@ -291,9 +320,7 @@
         (progn
           (unless (string= file eopengrok-last-filename)
             (insert (format "\n%s\n" file))
-            (eopengrok-abbreviate-file file)
-            (unless eopengrok-first-match-point
-              (setq eopengrok-first-match-point (point))))
+            (eopengrok-abbreviate-file file))
           (eopengrok-properties-region
            (list :name (expand-file-name file)
                  :info (cond
@@ -301,8 +328,8 @@
                         ((eopengrok-number-p info)
                          (string-to-number info))
                         (t info)))
-           (eopengrok-text-highlight src)
-           (insert (concat (format "%08s" info) " " src)))
+           (insert (concat (format "%08s" info) " "
+                           (eopengrok-text-highlight src))))
           (insert "\n")
           (setq eopengrok-last-filename file))
       (insert (car arg-list) "\n"))))
@@ -312,8 +339,6 @@
   (cond
    ((string-match eopengrok-source-regexp line))
    ((string-match eopengrok-history-regexp line))
-   ((string-match eopengrok-file-regexp line))
-   ((string-match eopengrok-unknown-regexp line))
    (t (string-match "\\(.*\\)" line)))
   (mapcar (lambda (arg) (match-string arg line)) '(1 2 3)))
 
@@ -328,37 +353,44 @@
           (let ((line (substring output pos (match-beginning 0))))
             (setq pos (match-end 0))
             (goto-char (point-max))
-            (-> line
-                eopengrok-truncate-line
-                eopengrok-remove-html-tags
-                eopengrok-read-line
-                eopengrok-print-line))))
+            (if eopengrok-skip-output-p
+                (when (string-match "^Results:" line)
+                  (setq eopengrok-skip-output-p nil)
+                  (insert line "\n"))
+              (-> line
+                  eopengrok-remove-html-tags
+                  eopengrok-read-line
+                  eopengrok-print-line)))))
       (setq eopengrok-pending-output (substring output pos)))))
 
 (defun eopengrok-process-sentinel (process event)
   "Handle eopengrok PROCESS EVENT."
   (with-current-buffer eopengrok-buffer
-    (goto-char (point-max))
-    (let ((buffer-read-only nil))
-      (setq eopengrok-pending-output nil)
-      (insert (format "\nSearch complete.  Search time = %.2f seconds.\n"
-                      (float-time (time-subtract (current-time)
-                                                 eopengrok-start-time)))))
-    (when eopengrok-first-match-point
-      (goto-char eopengrok-first-match-point))))
+    (when (string-match "killed" event)
+      (kill-buffer eopengrok-buffer))))
 
-(defun eopengrok-init (text dir kind)
-  "Initialize function from TEXT & DIR & KIND."
-  (setq eopengrok-start-time (current-time))
-  (setq eopengrok-last-filename nil)
-  (setq eopengrok-first-match-point nil)
+(defun eopengrok-display-info ()
+  "Print infomation."
   (with-current-buffer eopengrok-buffer
-    (goto-char (point-max))
     (let ((buffer-read-only nil))
-      (insert (s-repeat 80 "="))
-      (insert (format "\n%s%s" kind text))
+      (erase-buffer)
+      (insert (format "%s%s" eopengrok-current-search
+                      eopengrok-search-text))
       (insert (format "\nDirectory: %s\n"
-                      (s-chop-suffix eopengrok-configuration dir))))))
+                      (s-chop-suffix eopengrok-configuration
+                                     eopengrok-current-configuration))))))
+
+(defun eopengrok-init (text configuration kind)
+  "Initialize function from TEXT & CONFIGURATION & KIND."
+  (setq eopengrok-search-text text)
+  (setq eopengrok-last-filename nil)
+  (setq eopengrok-current-search kind)
+  (setq eopengrok-current-configuration configuration)
+  (eopengrok-display-info))
+
+(defun eopengrok-quick-search (options)
+  "Search from exist process with OPTIONS."
+  (process-send-string (get-process "eopengrok") options))
 
 (defmacro eopengrok-define-find (sym option)
   "Make function with SYM and OPTION."
@@ -368,24 +400,34 @@
     `(progn
        (defun ,fun (text) ,doc
               (interactive (list (read-string ,str (current-word))))
-              (let* ((conf (eopengrok-get-configuration))
-                     (proc (apply 'start-process
-                                  "eopengrok"
-                                  eopengrok-buffer
-                                  "java"
-                                  (eopengrok-search-option-list
-                                   conf ,option text))))
-                (eopengrok-init text conf ,str)
-                (setq eopengrok-search-text text)
-                (set-process-filter proc 'eopengrok-process-filter)
-                (set-process-sentinel proc 'eopengrok-process-sentinel)
-                (with-current-buffer eopengrok-buffer
-                  (eopengrok-mode t)
-                  (setq truncate-lines t)
-                  (setq buffer-read-only t)
-                  (set-buffer-modified-p nil)
-                  (pop-to-buffer eopengrok-buffer)
-                  (goto-char (point-max))))))))
+              (let ((conf (eopengrok-get-configuration))
+                    (proc (get-process "eopengrok")))
+                (when (and proc
+                           (not (equal eopengrok-current-configuration conf)))
+                  (kill-process proc)
+                  (sleep-for 0.1))
+                (if (get-process "eopengrok")
+                    (progn
+                      (eopengrok-init text conf ,str)
+                      (eopengrok-quick-search (eopengrok-quick-search-option
+                                               conf ,option text)))
+                  (let ((proc (apply 'start-process
+                                     "eopengrok"
+                                     eopengrok-buffer
+                                     "java"
+                                     "-jar" eopengrok-jar
+                                     (eopengrok-search-option-list
+                                      conf ,option text))))
+                    (eopengrok-init text conf ,str)
+                    (set-process-filter proc 'eopengrok-process-filter)
+                    (set-process-sentinel proc 'eopengrok-process-sentinel))))
+              (with-current-buffer eopengrok-buffer
+                (eopengrok-mode t)
+                (setq truncate-lines t)
+                (setq buffer-read-only t)
+                (set-buffer-modified-p nil)
+                (pop-to-buffer eopengrok-buffer)
+                (goto-char (point-max)))))))
 
 (eopengrok-define-find definition "-d")
 (eopengrok-define-find file "-p")
@@ -415,8 +457,6 @@
       (setq buffer-read-only t)
       (setq eopengrok-start-time (current-time))
       (goto-char (point-max))
-      (let ((buffer-read-only nil))
-        (insert (s-repeat 80 "=")))
       (pop-to-buffer eopengrok-indexing-buffer))))
 
 (defun eopengrok-startup-asserts ()
@@ -424,10 +464,10 @@
   (when (or (not eopengrok-jar)
             (not eopengrok-ctags))
     (display-warning 'eopengrok (format "\
-eopengrok requires opengrok.jar and ctags path.
+eopengrok requires clj-opengrok.jar and ctags path.
 
 You can add these lines to your init file.
-(setq eopengrok-jar   \"/path/to/opengrok-0.12.1.5/lib/opengrok.jar\")
+(setq eopengrok-jar   \"/path/to/clj-opengrok-0.3.0-standalone.jar\")
 (setq eopengrok-ctags \"/path/to/ctags\")
 
 See the README for more info:
@@ -448,7 +488,10 @@ https://github.com/youngker/eopengrok.el\n") :error)))
           ("\C-c\C-csb" . eopengrok-resume)
           ("n"          . eopengrok-next-line)
           ("p"          . eopengrok-previous-line)
-          ("c"          . eopengrok-kill-process)
+          ("f"          . eopengrok-next-page)
+          ("b"          . eopengrok-previous-page)
+          ("g"          . eopengrok-goto-page)
+          ("q"          . eopengrok-kill-process)
           ("<return>"   . eopengrok-jump-to-source))
   (define-key eopengrok-mode-map (read-kbd-macro (car it)) (cdr it)))
 
