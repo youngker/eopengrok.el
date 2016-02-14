@@ -2,18 +2,20 @@
 
 opengrok interface for emacs
 
+## ChangeLog
 
-ChangeLog - 0.4.0
-- Change to [clj-opengrok](https://github.com/youngker/clj-opengrok) from OpenGrok.
-- Use pagination to show 25 entries at a time.
-- Improved search speed.
+#### 0.4.0
+Change to [clj-opengrok](https://github.com/youngker/clj-opengrok) from OpenGrok.
+Use pagination to show 25 entries at a time.
+Improved search speed.
+Indexing has enable projects option. If it true, every directory in SRC_ROOT is considered a separate project.
 
 ## ScreenShot
 
-- fulltext
+#### fulltext
 <img align="center" src="https://raw.github.com/youngker/eopengrok.el/master/img/fulltext.png">
 
-- history
+#### history
 <img align="center" src="https://raw.github.com/youngker/eopengrok.el/master/img/history.png">
 
 ## Installation
@@ -22,15 +24,14 @@ It's available on [Melpa](https://melpa.org/):
 
     M-x package-install eopengrok
 
-Requirements
+## Requirements
 
-- Java 1.8
+#### Java 1.8
 
-- Exuberant ctags
+#### Exuberant ctags
   [http://ctags.sourceforge.net](http://ctags.sourceforge.net)
 
-- [clj-opengrok](https://github.com/youngker/clj-opengrok)
-
+#### [clj-opengrok](https://github.com/youngker/clj-opengrok)
   download [clj-opengrok-0.3.0-standalone.jar.zip](https://github.com/youngker/clj-opengrok/files/126413/clj-opengrok-0.3.0-standalone.jar.zip)
 
 You can add these lines to your init file.
@@ -40,7 +41,8 @@ You can add these lines to your init file.
 (setq eopengrok-jar   "/path/to/clj-opengrok-0.3.0-standalone.jar")
 (setq eopengrok-ctags "/path/to/ctags")
 
-(define-key global-map (kbd "C-c s I") 'eopengrok-make-index)
+(define-key global-map (kbd "C-c s i") 'eopengrok-make-index)
+(define-key global-map (kbd "C-c s I") 'eopengrok-make-index-with-enable-projects)
 (define-key global-map (kbd "C-c s d") 'eopengrok-find-definition)
 (define-key global-map (kbd "C-c s f") 'eopengrok-find-file)
 (define-key global-map (kbd "C-c s s") 'eopengrok-find-reference)
@@ -49,8 +51,7 @@ You can add these lines to your init file.
 (define-key global-map (kbd "C-c s b") 'eopengrok-resume)
 ```
 
-
-Key bindings
+## Key bindings
 
 Key | Function
 --- | --------

@@ -72,7 +72,7 @@
   :group 'eopengrok)
 
 (defcustom eopengrok-ignored-dir
-  '(".opengrok" "out" "*.so" "*.a" "*.o" "*.gz" "*.bz2" "*.jar" "*.zip" "*.class")
+  '("d:.opengrok" "d:out" "*.so" "*.a" "*.o" "*.gz" "*.bz2" "*.jar" "*.zip" "*.class")
   "Ignored file or directory."
   :group 'eopengrok)
 
@@ -119,19 +119,20 @@
       (kill-process proc)
     (kill-buffer eopengrok-buffer)))
 
-(defun eopengrok-index-option-list (dir)
-  "Opengrok index option list, target is DIR."
+(defun eopengrok-index-option-list (dir enable-projects-p)
+  "Index option list, target is DIR with ENABLE-PROJECTS-P flag."
   (-flatten (list "-Xmx2048m"
                   "-cp" eopengrok-jar "org.opensolaris.opengrok.index.Indexer"
                   "-r" "on"
                   "-c" eopengrok-ctags
                   "-a" "on"
                   "-W" (concat dir eopengrok-configuration)
-                  "-S" "-P"
+                  "-S"
                   "-s" dir
                   "-d" (concat dir ".opengrok")
                   "-H" "-q"
-                  (--mapcat (list "-i" it) eopengrok-ignored-dir))))
+                  (--mapcat (list "-i" it) eopengrok-ignored-dir)
+                  (when enable-projects-p "-P"))))
 
 (defun eopengrok-get-configuration ()
   "Search for Project configuration.xml."
@@ -444,20 +445,27 @@
                       (float-time (time-subtract (current-time)
                                                  eopengrok-start-time)))))))
 
-(defun eopengrok-make-index (dir)
-  "Make an Index file in a DIR."
-  (interactive "DIndex files in directory: ")
+(defun eopengrok-make-index (dir &optional enable-projects-p)
+  "Make an Index file in DIR, ENABLE-PROJECTS-P is flag for enable projects.
+If not nil every directory in DIR is considered a separate project."
+  (interactive "DRoot directory: ")
   (let ((proc (apply 'start-process
                      "eopengrok-indexer"
                      eopengrok-indexing-buffer
                      "java"
-                     (eopengrok-index-option-list (expand-file-name dir)))))
+                     (eopengrok-index-option-list (expand-file-name dir)
+                                                  enable-projects-p))))
     (set-process-sentinel proc 'eopengrok-index-process-sentinel)
     (with-current-buffer eopengrok-indexing-buffer
       (setq buffer-read-only t)
       (setq eopengrok-start-time (current-time))
       (goto-char (point-max))
       (pop-to-buffer eopengrok-indexing-buffer))))
+
+(defun eopengrok-make-index-with-enable-projects (dir)
+  "Make an Index file, every directory in DIR is considered a separate project."
+  (interactive "DRoot directory (enable projects): ")
+  (eopengrok-make-index dir t))
 
 (defun eopengrok-startup-asserts ()
   "Check the requirements."
@@ -479,7 +487,8 @@ https://github.com/youngker/eopengrok.el\n") :error)))
 (unless eopengrok-mode-map
   (setq eopengrok-mode-map (make-sparse-keymap)))
 
-(--each '(("\C-c\C-csI" . eopengrok-make-index)
+(--each '(("\C-c\C-csi" . eopengrok-make-index)
+          ("\C-c\C-csI" . eopengrok-make-index-with-enable-projects)
           ("\C-c\C-csd" . eopengrok-find-definition)
           ("\C-c\C-csf" . eopengrok-find-file)
           ("\C-c\C-css" . eopengrok-find-reference)
