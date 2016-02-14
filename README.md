@@ -6,8 +6,11 @@ opengrok interface for emacs
 
 #### 0.4.0
 Change to [clj-opengrok](https://github.com/youngker/clj-opengrok) from OpenGrok.
+
 Use pagination to show 25 entries at a time.
+
 Improved search speed.
+
 Indexing has enable projects option. If it true, every directory in SRC_ROOT is considered a separate project.
 
 ## ScreenShot
