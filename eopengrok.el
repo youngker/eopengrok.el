@@ -130,6 +130,10 @@
   "Opengrok search option list with CONFIGURATION FIND-OPTION TEXT."
   (list "search" "-R" configuration find-option text))
 
+(defun eopengrok-custom-option-list (configuration text)
+  "Opengrok search option list with CONFIGURATION FIND-OPTION TEXT."
+  (-flatten (list "search" "-R" configuration (split-string text " " t))))
+
 (defmacro eopengrok-properties-region (props &rest body)
   "Add PROPS and Execute BODY to all the text it insert."
   (let ((start (cl-gensym)))
@@ -362,6 +366,7 @@
               (interactive (list (read-string ,str (current-word))))
               (let ((conf (eopengrok-get-configuration))
                     (proc (get-process "eopengrok")))
+                (print ',sym)
                 (when proc
                   (kill-process proc)
                   (sleep-for 0.1))
@@ -369,8 +374,10 @@
                                    "eopengrok"
                                    eopengrok-buffer
                                    "clj-opengrok"
-                                   (eopengrok-search-option-list
-                                    conf ,option text))))
+                                   (if (eq ',sym 'custom)
+                                       (eopengrok-custom-option-list conf text)
+                                     (eopengrok-search-option-list
+                                      conf ,option text)))))
                   (eopengrok-init text conf ,str)
                   (set-process-filter proc 'eopengrok-process-filter)
                   (set-process-sentinel proc 'eopengrok-process-sentinel)))
@@ -386,6 +393,7 @@
 (eopengrok-define-find reference "-r")
 (eopengrok-define-find text "-f")
 (eopengrok-define-find history "-h")
+(eopengrok-define-find custom "")
 
 (defun eopengrok-index-process-sentinel (process event)
   "Handle eopengrok PROCESS EVENT."
@@ -424,18 +432,10 @@ If not nil every directory in DIR is considered a separate project."
 (unless eopengrok-mode-map
   (setq eopengrok-mode-map (make-sparse-keymap)))
 
-(--each '(("\C-c\C-csi" . eopengrok-make-index)
-          ("\C-c\C-csI" . eopengrok-make-index-with-enable-projects)
-          ("\C-c\C-csd" . eopengrok-find-definition)
-          ("\C-c\C-csf" . eopengrok-find-file)
-          ("\C-c\C-css" . eopengrok-find-reference)
-          ("\C-c\C-cst" . eopengrok-find-text)
-          ("\C-c\C-csh" . eopengrok-find-history)
-          ("\C-c\C-csb" . eopengrok-resume)
-          ("n"          . eopengrok-next-line)
-          ("p"          . eopengrok-previous-line)
-          ("q"          . eopengrok-kill-process)
-          ("<return>"   . eopengrok-jump-to-source))
+(--each '(("n"        . eopengrok-next-line)
+          ("p"        . eopengrok-previous-line)
+          ("q"        . eopengrok-kill-process)
+          ("<return>" . eopengrok-jump-to-source))
   (define-key eopengrok-mode-map (read-kbd-macro (car it)) (cdr it)))
 
 (defun eopengrok-mode-line-page ()
