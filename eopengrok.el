@@ -131,7 +131,7 @@
   (list "search" "-R" configuration find-option text))
 
 (defun eopengrok-custom-option-list (configuration text)
-  "Opengrok search option list with CONFIGURATION FIND-OPTION TEXT."
+  "Opengrok search option list with CONFIGURATION TEXT."
   (-flatten (list "search" "-R" configuration (split-string text " " t))))
 
 (defmacro eopengrok-properties-region (props &rest body)
@@ -366,7 +366,6 @@
               (interactive (list (read-string ,str (current-word))))
               (let ((conf (eopengrok-get-configuration))
                     (proc (get-process "eopengrok")))
-                (print ',sym)
                 (when proc
                   (kill-process proc)
                   (sleep-for 0.1))
