@@ -24,8 +24,7 @@ It's available on [Melpa](https://melpa.org/):
 
 ## Requirements
 
-* [clj-opengrok](https://github.com/youngker/clj-opengrok)
-Download [clj-opengrok-0.4.0](https://github.com/youngker/clj-opengrok/releases)
+* [clj-opengrok](https://github.com/youngker/clj-opengrok) : download [here](https://github.com/youngker/clj-opengrok/releases)
 
 You can add these lines to your init file.
 
