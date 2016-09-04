@@ -36,19 +36,20 @@
 
 (defvar eopengrok-pending-output nil)
 (defvar eopengrok-last-filename nil)
-(defvar eopengrok-search-text nil)
-(defvar eopengrok-current-search nil)
-(defvar eopengrok-page-number nil)
+(defvar eopengrok-page nil)
 (defvar eopengrok-mode-line-status 'not-running)
 
 (defconst eopengrok-buffer "*eopengrok*")
 (defconst eopengrok-indexing-buffer "*eopengrok-indexing*")
 
-(defconst eopengrok-source-regexp
-  "^\\([^ ]*?\\):\\([0-9]+\\):\\(.*\\)")
-
 (defconst eopengrok-history-regexp
-  "^\\([^ ]*?\\)::[ \t]+\\(\\w+\\)\\(.*\\)")
+  "^\\([[:lower:][:upper:]]?:?.*?\\)::[ \t]+\\(\\w+\\)\\(.*\\)")
+
+(defconst eopengrok-source-regexp
+  "^\\([[:lower:][:upper:]]?:?.*?\\):\\([0-9]+\\):\\(.*\\)")
+
+(defconst eopengrok-page-separator-regexp
+  "^clj-opengrok> \\([0-9]+\\)/\\([0-9]+\\)")
 
 (defgroup eopengrok nil
   "Opengrok interface for emacs."
@@ -66,12 +67,7 @@
   :type 'number
   :group 'eopengrok)
 
-(defcustom eopengrok-line-length 500
-  "Truncate line length."
-  :type 'number
-  :group 'eopengrok)
-
-(defcustom eopengrok-mode-line '(:eval (eopengrok-mode-line-page))
+(defcustom eopengrok-mode-line '(:eval (eopengrok--mode-line-page))
   "Mode line lighter for eopengrok."
   :group 'eopengrok
   :type 'sexp
@@ -80,6 +76,12 @@
 (defcustom eopengrok-mode-line-prefix "EOG"
   "Mode line prefix."
   :group 'eopengrok
+  :type 'string)
+
+(defcustom eopengrok-ignore-file-or-directory
+  ".opengrok:out:*.so:*.a:*.o:*.gz:*.bz2:*.jar:*.zip:*.class:*.elc"
+  "Ignore files or directories."
+  :group 'eopngrok
   :type 'string)
 
 (defface eopengrok-file-face
@@ -118,7 +120,7 @@
       (sleep-for 0.1))
     (kill-buffer buf)))
 
-(defun eopengrok-get-configuration ()
+(defun eopengrok--get-configuration ()
   "Search for Project configuration.xml."
   (let* ((start-dir (expand-file-name default-directory))
          (index-dir (locate-dominating-file start-dir eopengrok-configuration)))
@@ -126,30 +128,28 @@
         (concat (expand-file-name index-dir) eopengrok-configuration)
       (user-error "Can't find configuration.xml"))))
 
-(defun eopengrok-search-option-list (configuration find-option text)
-  "Opengrok search option list with CONFIGURATION FIND-OPTION TEXT."
-  (list "search" "-R" configuration find-option text))
+(defun eopengrok--search-option (conf text option symbol)
+  "Opengrok search option list with CONF TEXT OPTION SYMBOL."
+  (if (eq symbol 'custom)
+      (-flatten (list "search" "-R" conf (split-string text " " t)))
+    (list "search" "-R" conf option text)))
 
-(defun eopengrok-custom-option-list (configuration text)
-  "Opengrok search option list with CONFIGURATION TEXT."
-  (-flatten (list "search" "-R" configuration (split-string text " " t))))
-
-(defmacro eopengrok-properties-region (props &rest body)
+(defmacro eopengrok--properties-region (props &rest body)
   "Add PROPS and Execute BODY to all the text it insert."
   (let ((start (cl-gensym)))
     `(let ((,start (point)))
        (prog1 (progn ,@body)
          (add-text-properties ,start (point) ,props)))))
 
-(defun eopengrok-get-properties (pos)
+(defun eopengrok--get-properties (pos)
   "Get properties at POS."
   (list (get-text-property pos :name)
         (get-text-property pos :info)))
 
-(defun eopengrok-show-source ()
+(defun eopengrok--show-source ()
   "Display original source."
   (with-current-buffer eopengrok-buffer
-    (-when-let* (((file number) (eopengrok-get-properties (point))))
+    (-when-let* (((file number) (eopengrok--get-properties (point))))
       (let* ((buffer (find-file-noselect file))
              (window (display-buffer buffer)))
         (set-buffer buffer)
@@ -160,12 +160,13 @@
         (set-window-point window (point))
         window))))
 
-(defun eopengrok-show-commit ()
-  "Display magit-show-commit."
-  (-when-let* (((file commit-id) (eopengrok-get-properties (point))))
+(defun eopengrok--show-commit (noselect)
+  "Display magit-show-commit with NOSELECT."
+  (-when-let* (((file commit-id) (eopengrok--get-properties (point))))
     (setq default-directory (file-name-directory file))
-    (magit-git-string "rev-parse" "--show-toplevel")
-    (magit-show-commit commit-id)))
+    (let ((magit-display-buffer-noselect noselect))
+      (magit-git-string "rev-parse" "--show-toplevel")
+      (magit-show-commit commit-id))))
 
 (defun eopengrok-jump-to-source ()
   "Jump point to the other window."
@@ -174,14 +175,10 @@
     (beginning-of-line)
     (-when-let (info (get-text-property (point) :info))
       (if (numberp info)
-          (-when-let (window (eopengrok-show-source))
+          (-when-let (window (eopengrok--show-source))
             (select-window window)
             (ring-insert find-tag-marker-ring (point-marker)))
-        (eopengrok-show-commit)))))
-
-(defun eopengrok-number-p (str)
-  "Check commitid from STR."
-  (< (length str) 8))
+        (eopengrok--show-commit nil)))))
 
 (defun eopengrok-next-line ()
   "Move point to the next search result, if one exists."
@@ -191,9 +188,8 @@
                      (save-excursion (end-of-line) (point)) :info))
       (goto-char pos)
       (if (numberp (get-text-property pos :info))
-          (eopengrok-show-source)
-        (let ((magit-display-buffer-noselect t))
-          (eopengrok-show-commit))))))
+          (eopengrok--show-source)
+        (eopengrok--show-commit t)))))
 
 (defun eopengrok-previous-line ()
   "Move point to the previous search result, if one exists."
@@ -204,11 +200,10 @@
       (goto-char pos)
       (beginning-of-line)
       (if (numberp (get-text-property (point) :info))
-          (eopengrok-show-source)
-        (let ((magit-display-buffer-noselect t))
-          (eopengrok-show-commit))))))
+          (eopengrok--show-source)
+        (eopengrok--show-commit t)))))
 
-(defun eopengrok-abbreviate-file (file)
+(defun eopengrok--abbreviate-file (file)
   "Abbreviate FILE name."
   (let* ((start (- (point) (length file)))
          (end (point))
@@ -229,87 +224,79 @@
       (cl-decf amount (funcall advance-word)))
     (goto-char end)))
 
-(defun eopengrok-truncate-line (line)
-  "Truncate long text from LINE."
-  (let ((len eopengrok-line-length))
-    (if (> (length line) len)
-        (format "%s...]" (substring line 0 (- len 4)))
-      line)))
-
-(defun eopengrok-remove-html-tags (line)
-  "Remove html tag from LINE."
-  (->> line
+(defun eopengrok--remove-html-tags (text)
+  "Remove html tag from TEXT."
+  (->> text
        (replace-regexp-in-string "<[^>]*>" "")
        (s-replace-all '(("&lt;" . "<") ("&gt;" . ">")
                         ("&amp;" . "&") ("\r" . "")))))
 
-(defun eopengrok-text-highlight (line)
-  "Highlighting Text from LINE."
+(defun eopengrok--text-highlight (text line)
+  "Highlighting TEXT from LINE."
   (let (beg end)
     (with-temp-buffer
       (insert (propertize line 'read-only nil))
       (goto-char (point-min))
       (while (and (re-search-forward
-                   (s-replace "\"" "" eopengrok-search-text) nil t)
+                   (s-replace "\"" "" text) nil t)
                   (> (- (setq end (match-end 0))
                         (setq beg (match-beginning 0))) 0))
         (add-text-properties beg end '(face eopengrok-highlight-face)))
       (buffer-string))))
 
-(defun eopengrok-handle-mouse (_event)
+(defun eopengrok--handle-mouse (_event)
   "Handle mouse click EVENT."
   (interactive "e")
   (eopengrok-jump-to-source))
 
 (defvar eopengrok-mouse-map
   (let ((map (make-sparse-keymap)))
-    (define-key map [mouse-1] #'eopengrok-handle-mouse)
+    (define-key map [mouse-1] #'eopengrok--handle-mouse)
     map))
 
-(defun eopengrok-print-line (arg-list)
-  "Print line from ARG-LIST with their propertize."
-  (-if-let* (((file info src) arg-list)
-             (file (propertize file 'face 'eopengrok-file-face))
-             (info (propertize info
-                               'face 'eopengrok-info-face
-                               'mouse-face 'highlight
-                               'keymap eopengrok-mouse-map))
-             (src (propertize src 'face 'eopengrok-source-face)))
-      (eopengrok-properties-region
-       (list :page eopengrok-page-number)
-       (progn
-         (unless (string= file eopengrok-last-filename)
-           (insert (format "\n%s\n" file))
-           (eopengrok-abbreviate-file file))
-         (eopengrok-properties-region
-          (list :name (expand-file-name file)
-                :info (cond
-                       ((equal info "") 1)
-                       ((eopengrok-number-p info)
-                        (string-to-number info))
-                       (t info)))
-          (insert (concat (format "%08s" info) " "
-                          (eopengrok-text-highlight src))))
-         (insert "\n")
-         (setq eopengrok-last-filename file)))
-    (-if-let* (((_ cur-page total-page)
-                (s-match "clj-opengrok> \\([0-9]+\\)/\\([0-9]+\\)"
-                         (car arg-list))))
+(defun eopengrok--line-properties (line-list &optional history)
+  "Decorate LINE-LIST with HISTORY."
+  (-when-let* (((file info src) line-list)
+               (file (propertize file 'face 'eopengrok-file-face))
+               (info (propertize info
+                                 'face 'eopengrok-info-face
+                                 'mouse-face 'highlight
+                                 'keymap eopengrok-mouse-map))
+               (src (propertize (eopengrok--remove-html-tags src)
+                                'face 'eopengrok-source-face))
+               (proc (get-process "eopengrok")))
+    (eopengrok--properties-region
+     (list :page eopengrok-page)
+     (progn
+       (unless (string= file eopengrok-last-filename)
+         (insert (format "\n%s\n" file))
+         (eopengrok--abbreviate-file file))
+       (eopengrok--properties-region
+        (list :name (expand-file-name file)
+              :info (if history info (string-to-number info)))
+        (insert (concat (format "%08s" info) " "
+                        (eopengrok--text-highlight
+                         (process-get proc :text)
+                         src))))
+       (insert "\n")
+       (setq eopengrok-last-filename file)))))
 
-        (progn
-          (setq eopengrok-mode-line-status 'running)
-          (setq eopengrok-page-number (format "%s/%s" cur-page total-page)))
-      (insert (car arg-list) "\n"))))
-
-(defun eopengrok-read-line (line)
-  "Read the LINE and return the list for print."
+(defun eopengrok--insert-line (line)
+  "Insert matching any regex in LINE."
   (cond
-   ((string-match eopengrok-source-regexp line))
-   ((string-match eopengrok-history-regexp line))
-   (t (string-match "\\(.*\\)" line)))
-  (mapcar (lambda (arg) (match-string arg line)) '(1 2 3)))
+   ((string-match eopengrok-history-regexp line)
+    (eopengrok--line-properties
+     (mapcar (lambda (n) (match-string n line)) '(1 2 3)) t))
+   ((string-match eopengrok-source-regexp line)
+    (eopengrok--line-properties
+     (mapcar (lambda (n) (match-string n line)) '(1 2 3))))
+   ((string-match eopengrok-page-separator-regexp line)
+    (setq eopengrok-mode-line-status 'running
+          eopengrok-page (format "%s/%s" (match-string 1 line)
+                                 (match-string 2 line))))
+   (t (insert line "\n"))))
 
-(defun eopengrok-process-filter (process output)
+(defun eopengrok--process-filter (process output)
   "Process eopengrok output from PROCESS containted in OUTPUT."
   (with-current-buffer (process-buffer process)
     (let ((buffer-read-only nil)
@@ -320,13 +307,11 @@
           (let ((line (substring output pos (match-beginning 0))))
             (setq pos (match-end 0))
             (goto-char (point-max))
-            (-> line
-                eopengrok-remove-html-tags
-                eopengrok-read-line
-                eopengrok-print-line))))
+            ;;(insert line "\n")
+            (eopengrok--insert-line line))))
       (setq eopengrok-pending-output (substring output pos)))))
 
-(defun eopengrok-process-sentinel (process event)
+(defun eopengrok--process-sentinel (process event)
   "Handle eopengrok PROCESS EVENT."
   (let ((buf (process-buffer process)))
     (with-current-buffer buf
@@ -336,59 +321,55 @@
              (setq eopengrok-mode-line-status 'finished))
             (t nil)))))
 
-(defun eopengrok-display-info (configuration)
-  "Print information with CONFIGURATION."
-  (with-current-buffer eopengrok-buffer
-    (let ((buffer-read-only nil))
-      (erase-buffer)
-      (insert (format "%s%s" eopengrok-current-search
-                      eopengrok-search-text))
-      (insert (format "\nDirectory: %s\n"
-                      (s-chop-suffix eopengrok-configuration
-                                     configuration)))
-      (forward-line -2))))
+(defun eopengrok--current-info (process dir &optional search text ep)
+  "Display current information (PROCESS DIR SEARCH TEXT EP)."
+  (let ((buf (process-buffer process)))
+    (with-current-buffer buf
+      (let ((buffer-read-only nil))
+        (erase-buffer)
+        (if search
+            (insert text)
+          (insert (concat "Creating the index" (and ep " (enable projects)"))))
+        (insert (format "\nDirectory: %s\n" dir))
+        (forward-line -2))
+      (setq truncate-lines t)
+      (setq buffer-read-only t)
+      (pop-to-buffer buf))))
 
-(defun eopengrok-init (&optional text kind)
-  "Initialize function from TEXT & CONFIGURATION & KIND."
-  (setq eopengrok-search-text text)
-  (setq eopengrok-last-filename nil)
-  (setq eopengrok-current-search kind)
-  (setq eopengrok-pending-output nil)
-  (setq eopengrok-page-number nil)
-  (setq eopengrok-mode-line-status 'not-running))
+(defun eopengrok--init ()
+  "Initialize variable."
+  (setq eopengrok-last-filename nil
+        eopengrok-pending-output nil
+        eopengrok-page nil
+        eopengrok-mode-line-status 'not-running))
 
 (defmacro eopengrok-define-find (sym option)
   "Make function with SYM and OPTION."
   (let ((fun (intern (format "eopengrok-find-%s" sym)))
         (doc (format "Find option %s" option))
         (str (format "Find %s: " sym)))
-    `(progn
-       (defun ,fun (text) ,doc
-              (interactive (list (read-string ,str (current-word))))
-              (let ((conf (eopengrok-get-configuration))
-                    (proc (get-process "eopengrok")))
-                (when proc
-                  (kill-process proc)
-                  (sleep-for 0.1))
-                (let ((proc (apply 'start-process
-                                   "eopengrok"
-                                   eopengrok-buffer
-                                   "clj-opengrok"
-                                   (if (eq ',sym 'custom)
-                                       (eopengrok-custom-option-list conf text)
-                                     (eopengrok-search-option-list
-                                      conf ,option text)))))
-                  (set-process-query-on-exit-flag proc nil)
-                  (set-process-filter proc 'eopengrok-process-filter)
-                  (set-process-sentinel proc 'eopengrok-process-sentinel))
-                (with-current-buffer eopengrok-buffer
-                  (eopengrok-mode t)
-                  (eopengrok-init text ,str)
-                  (eopengrok-display-info conf)
-                  (setq truncate-lines t)
-                  (setq buffer-read-only t)
-                  (set-buffer-modified-p nil)
-                  (pop-to-buffer eopengrok-buffer)))))))
+    `(defun ,fun (text) ,doc
+            (interactive (list (read-string ,str (thing-at-point 'symbol))))
+            (when-let ((proc (get-process "eopengrok")))
+              (kill-process proc)
+              (sleep-for 0.1))
+            (let* ((conf (eopengrok--get-configuration))
+                   (proc (apply 'start-process
+                                "eopengrok"
+                                eopengrok-buffer
+                                "clj-opengrok"
+                                (eopengrok--search-option conf text
+                                                          ,option ',sym))))
+              (set-process-query-on-exit-flag proc nil)
+              (set-process-filter proc 'eopengrok--process-filter)
+              (set-process-sentinel proc 'eopengrok--process-sentinel)
+              (process-put proc :text text)
+              (with-current-buffer eopengrok-buffer
+                (eopengrok-mode t)
+                (eopengrok--init)
+                (eopengrok--current-info
+                 proc (s-chop-suffix eopengrok-configuration conf)
+                 t (concat ,str text)))))))
 
 (eopengrok-define-find definition "-d")
 (eopengrok-define-find file "-p")
@@ -397,34 +378,30 @@
 (eopengrok-define-find history "-h")
 (eopengrok-define-find custom "")
 
-(defun eopengrok-make-index (dir &optional enable-projects-p)
-  "Make an Index file in DIR, ENABLE-PROJECTS-P is flag for enable projects.
+(defun eopengrok-create-index (dir &optional enable-projects-p)
+  "Create an Index file in DIR, ENABLE-PROJECTS-P is flag for enable projects.
 If not nil every directory in DIR is considered a separate project."
   (interactive "DRoot directory: ")
   (let ((proc (apply 'start-process
                      "eopengrok-indexer"
                      eopengrok-indexing-buffer
                      "clj-opengrok"
-                     (remove nil (list "index" "-s" (expand-file-name dir)
-                                       (when enable-projects-p "-e"))))))
-    (set-process-filter proc 'eopengrok-process-filter)
-    (set-process-sentinel proc 'eopengrok-process-sentinel)
+                     (append (list "index" "-s" (expand-file-name dir))
+                             (list "-i" eopengrok-ignore-file-or-directory)
+                             (when enable-projects-p '("-e"))))))
+    (set-process-filter proc 'eopengrok--process-filter)
+    (set-process-sentinel proc 'eopengrok--process-sentinel)
     (with-current-buffer eopengrok-indexing-buffer
-      (setq buffer-read-only t)
       (eopengrok-mode t)
-      (eopengrok-init)
-      (setq eopengrok-mode-line-status 'running)
-      (let ((buffer-read-only nil))
-        (erase-buffer)
-        (insert (format "Directory: %s\n"
-                        (expand-file-name dir)))
-        (goto-char (point-max)))
-      (pop-to-buffer eopengrok-indexing-buffer))))
+      (eopengrok--init)
+      (eopengrok--current-info proc (expand-file-name dir)
+                               nil nil enable-projects-p)
+      (setq eopengrok-mode-line-status 'running))))
 
-(defun eopengrok-make-index-with-enable-projects (dir)
-  "Make an Index file, every directory in DIR is considered a separate project."
+(defun eopengrok-create-index-with-enable-projects (dir)
+  "Create an Index file, every directory in DIR is considered a separate project."
   (interactive "DRoot directory (enable projects): ")
-  (eopengrok-make-index dir t))
+  (eopengrok-create-index dir t))
 
 (defvar eopengrok-mode-map nil
   "Keymap for eopengrok minor mode.")
@@ -438,20 +415,18 @@ If not nil every directory in DIR is considered a separate project."
           ("<return>" . eopengrok-jump-to-source))
   (define-key eopengrok-mode-map (read-kbd-macro (car it)) (cdr it)))
 
-(defun eopengrok-mode-line-page ()
-  "Get a page in the mode line."
+(defun eopengrok--mode-line-page ()
+  "Return the string of page number."
   (let ((page (or (get-text-property (point) :page)
-                  eopengrok-page-number))
+                  eopengrok-page))
         (status (pcase eopengrok-mode-line-status
-                  (`running "*:")
-                  (`finished ":")
-                  (`not-running "-"))))
+                  (`running "*:") (`finished ":") (`not-running ""))))
     (concat " " eopengrok-mode-line-prefix status page)))
 
 (define-minor-mode eopengrok-mode
   "Minor mode for opengrok."
-  :lighter eopengrok-mode-line
-  nil " eopengrok" eopengrok-mode-map)
+  :keymap eopengrok-mode-map
+  :lighter eopengrok-mode-line)
 
 (provide 'eopengrok)
 
