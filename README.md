@@ -2,24 +2,19 @@
 
 opengrok interface for emacs
 
-## ChangeLog
-
-#### 0.4.0
-Change to [clj-opengrok](https://github.com/youngker/clj-opengrok) from OpenGrok.
-
-Use pagination to show 25 entries at a time.
-
-Improved search speed.
-
-Indexing has enable projects option. If it true, every directory in SRC_ROOT is considered a separate project.
-
 ## ScreenShot
 
-#### fulltext
+* fulltext
 <img align="center" src="https://raw.github.com/youngker/eopengrok.el/master/img/fulltext.png">
 
-#### history
+* history
 <img align="center" src="https://raw.github.com/youngker/eopengrok.el/master/img/history.png">
+
+* custom 1
+<img align="center" src="https://raw.github.com/youngker/eopengrok.el/master/img/custom1.png">
+
+* custom 2
+<img align="center" src="https://raw.github.com/youngker/eopengrok.el/master/img/custom2.png">
 
 ## Installation
 
@@ -29,28 +24,21 @@ It's available on [Melpa](https://melpa.org/):
 
 ## Requirements
 
-#### Java 1.8
-
-#### Exuberant ctags
-  [http://ctags.sourceforge.net](http://ctags.sourceforge.net)
-
-#### [clj-opengrok](https://github.com/youngker/clj-opengrok)
-  download [clj-opengrok-0.3.0-standalone.jar.zip](https://github.com/youngker/clj-opengrok/files/126413/clj-opengrok-0.3.0-standalone.jar.zip)
+* [clj-opengrok](https://github.com/youngker/clj-opengrok) : download [here](https://github.com/youngker/clj-opengrok/releases)
 
 You can add these lines to your init file.
 
 ```elisp
 (require 'eopengrok)
-(setq eopengrok-jar   "/path/to/clj-opengrok-0.3.0-standalone.jar")
-(setq eopengrok-ctags "/path/to/ctags")
 
-(define-key global-map (kbd "C-c s i") 'eopengrok-make-index)
-(define-key global-map (kbd "C-c s I") 'eopengrok-make-index-with-enable-projects)
+(define-key global-map (kbd "C-c s i") 'eopengrok-create-index)
+(define-key global-map (kbd "C-c s I") 'eopengrok-create-index-with-enable-projects)
 (define-key global-map (kbd "C-c s d") 'eopengrok-find-definition)
 (define-key global-map (kbd "C-c s f") 'eopengrok-find-file)
 (define-key global-map (kbd "C-c s s") 'eopengrok-find-reference)
 (define-key global-map (kbd "C-c s t") 'eopengrok-find-text)
 (define-key global-map (kbd "C-c s h") 'eopengrok-find-history)
+(define-key global-map (kbd "C-c s c") 'eopengrok-find-custom)
 (define-key global-map (kbd "C-c s b") 'eopengrok-resume)
 ```
 
@@ -60,10 +48,7 @@ Key | Function
 --- | --------
 <kbd>n</kbd> | eopengrok-next-line
 <kbd>p</kbd> | eopengrok-previous-line
-<kbd>f</kbd> | eopengrok-next-page
-<kbd>b</kbd> | eopengrok-previous-page
-<kbd>g</kbd> | eopengrok-goto-page
-<kbd>q</kbd> | eopengrok-kill-process
+<kbd>q</kbd> | eopengrok-quit
 
 ## License
 
