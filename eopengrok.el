@@ -350,9 +350,10 @@
         (str (format "Find %s: " sym)))
     `(defun ,fun (text) ,doc
             (interactive (list (read-string ,str (thing-at-point 'symbol))))
-            (when-let ((proc (get-process "eopengrok")))
-              (kill-process proc)
-              (sleep-for 0.1))
+            (let ((proc (get-process "eopengrok")))
+              (when proc
+                (kill-process proc)
+                (sleep-for 0.1)))
             (let* ((conf (eopengrok--get-configuration))
                    (proc (apply 'start-process
                                 "eopengrok"
