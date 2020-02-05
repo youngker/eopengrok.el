@@ -1,9 +1,9 @@
 ;;; eopengrok.el --- opengrok interface for emacs -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2016 Youngjoo Lee
+;; Copyright (C) 2020 Youngjoo Lee
 
 ;; Author: Youngjoo Lee <youngker@gmail.com>
-;; Version: 0.5.0
+;; Version: 0.6.0
 ;; Keywords: tools
 ;; Package-Requires: ((s "1.9.0") (dash "2.10.0") (magit "2.1.0") (cl-lib "0.5"))
 
@@ -33,11 +33,13 @@
 (require 'etags)
 (require 'magit)
 (require 'cl-lib)
+(require 'xref)
 
 (defvar eopengrok-pending-output nil)
 (defvar eopengrok-last-filename nil)
 (defvar eopengrok-page nil)
 (defvar eopengrok-mode-line-status 'not-running)
+(defvar eopengrok--line-overlay nil)
 
 (defconst eopengrok-buffer "*eopengrok*")
 (defconst eopengrok-indexing-buffer "*eopengrok-indexing*")
@@ -113,6 +115,8 @@
 (defun eopengrok-quit ()
   "Quit eopengrok-mode."
   (interactive)
+  (if eopengrok--line-overlay
+      (delete-overlay eopengrok--line-overlay))
   (let* ((buf (current-buffer))
          (proc (get-buffer-process buf)))
     (when (process-live-p proc)
@@ -146,19 +150,24 @@
   (list (get-text-property pos :name)
         (get-text-property pos :info)))
 
-(defun eopengrok--show-source ()
-  "Display original source."
-  (with-current-buffer eopengrok-buffer
-    (-when-let* (((file number) (eopengrok--get-properties (point))))
-      (let* ((buffer (find-file-noselect file))
-             (window (display-buffer buffer)))
-        (set-buffer buffer)
-        (save-restriction
-          (widen)
-          (goto-char (point-min))
-          (forward-line (1- number)))
-        (set-window-point window (point))
-        window))))
+(defun eopengrok--highlight-current-line ()
+  "Make overlay in current line."
+  (let ((s (line-beginning-position))
+        (e (1+ (line-end-position))))
+    (if eopengrok--line-overlay
+        (move-overlay eopengrok--line-overlay s e (current-buffer))
+      (setq eopengrok--line-overlay (make-overlay s e)))
+    (overlay-put eopengrok--line-overlay 'face 'helm-selection-line)
+    (recenter)))
+
+(defun eopengrok--open-file ()
+  "Open with `find-file-other-window'."
+  (-when-let ((file number)
+              (eopengrok--get-properties (point)))
+    (find-file-other-window file)
+    (goto-char (point-min))
+    (forward-line (1- number))
+    (eopengrok--highlight-current-line)))
 
 (defun eopengrok--show-commit (noselect)
   "Display magit-show-commit with NOSELECT."
@@ -171,37 +180,35 @@
 (defun eopengrok-jump-to-source ()
   "Jump point to the other window."
   (interactive)
-  (save-excursion
-    (beginning-of-line)
-    (-when-let (info (get-text-property (point) :info))
-      (if (numberp info)
-          (-when-let (window (eopengrok--show-source))
-            (select-window window)
-            (ring-insert find-tag-marker-ring (point-marker)))
-        (eopengrok--show-commit nil)))))
+  (if (numberp (get-text-property (point) :info))
+      (eopengrok--open-file)
+    (eopengrok--show-commit nil))
+  (delete-overlay eopengrok--line-overlay)
+  (xref-push-marker-stack (point-marker)))
+
+(defun eopengrok-move-line (pfn lfn)
+  "Move point with PFN and LFN."
+  (with-current-buffer (current-buffer)
+    (-when-let (pos (funcall pfn (save-excursion
+                                   (funcall lfn) (point)) :info))
+      (goto-char pos)
+      (beginning-of-line)
+      (save-selected-window
+        (if (numberp (get-text-property (point) :info))
+            (eopengrok--open-file)
+          (eopengrok--show-commit nil))))))
 
 (defun eopengrok-next-line ()
   "Move point to the next search result, if one exists."
   (interactive)
-  (with-current-buffer eopengrok-buffer
-    (-when-let (pos (next-single-property-change
-                     (save-excursion (end-of-line) (point)) :info))
-      (goto-char pos)
-      (if (numberp (get-text-property pos :info))
-          (eopengrok--show-source)
-        (eopengrok--show-commit t)))))
+  (eopengrok-move-line #'next-single-property-change
+                       #'end-of-line))
 
 (defun eopengrok-previous-line ()
   "Move point to the previous search result, if one exists."
   (interactive)
-  (with-current-buffer eopengrok-buffer
-    (-when-let (pos (previous-single-property-change
-                     (save-excursion (beginning-of-line) (point)) :info))
-      (goto-char pos)
-      (beginning-of-line)
-      (if (numberp (get-text-property (point) :info))
-          (eopengrok--show-source)
-        (eopengrok--show-commit t)))))
+  (eopengrok-move-line #'previous-single-property-change
+                       #'beginning-of-line))
 
 (defun eopengrok--abbreviate-file (file)
   "Abbreviate FILE name."
@@ -413,7 +420,7 @@ If not nil every directory in DIR is considered a separate project."
 (--each '(("n"        . eopengrok-next-line)
           ("p"        . eopengrok-previous-line)
           ("q"        . eopengrok-quit)
-          ("<return>" . eopengrok-jump-to-source))
+          ("RET"      . eopengrok-jump-to-source))
   (define-key eopengrok-mode-map (read-kbd-macro (car it)) (cdr it)))
 
 (defun eopengrok--mode-line-page ()
