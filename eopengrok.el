@@ -1,9 +1,9 @@
 ;;; eopengrok.el --- opengrok interface for emacs -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2020 Youngjoo Lee
+;; Copyright (C) 2023 Youngjoo Lee
 
 ;; Author: Youngjoo Lee <youngker@gmail.com>
-;; Version: 0.6.0
+;; Version: 1.7.42
 ;; Keywords: tools
 ;; Package-Requires: ((s "1.9.0") (dash "2.10.0") (magit "2.1.0") (cl-lib "0.5"))
 
@@ -54,7 +54,7 @@
   "^clj-opengrok> \\([0-9]+\\)/\\([0-9]+\\)")
 
 (defgroup eopengrok nil
-  "Opengrok interface for emacs."
+  "Opengrok interface for EMACS."
   :prefix "eopengrok-"
   :group 'applications)
 
@@ -106,6 +106,11 @@
   "Face for highlight item."
   :group 'eopengrok)
 
+(defface eopengrok-highlight-line-face
+  '((t :inherit hl-line))
+  "Face for highlight line."
+  :group 'eopengrok)
+
 (defun eopengrok-resume ()
   "Resume *eopengrok* buffer."
   (interactive)
@@ -113,7 +118,7 @@
     (pop-to-buffer eopengrok-buffer)))
 
 (defun eopengrok-quit ()
-  "Quit eopengrok-mode."
+  "Quit `eopengrok-mode'."
   (interactive)
   (if eopengrok--line-overlay
       (delete-overlay eopengrok--line-overlay))
@@ -157,7 +162,7 @@
     (if eopengrok--line-overlay
         (move-overlay eopengrok--line-overlay s e (current-buffer))
       (setq eopengrok--line-overlay (make-overlay s e)))
-    (overlay-put eopengrok--line-overlay 'face 'helm-selection-line)
+    (overlay-put eopengrok--line-overlay 'face 'eopengrok-highlight-line-face)
     (recenter)))
 
 (defun eopengrok--open-file ()
@@ -170,7 +175,7 @@
     (eopengrok--highlight-current-line)))
 
 (defun eopengrok--show-commit (noselect)
-  "Display magit-show-commit with NOSELECT."
+  "Display `magit-show-commit' with NOSELECT."
   (-when-let* (((file commit-id) (eopengrok--get-properties (point))))
     (setq default-directory (file-name-directory file))
     (let ((magit-display-buffer-noselect noselect))

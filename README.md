@@ -52,7 +52,7 @@ Key | Function
 
 ## License
 
-Copyright (C) 2020 Youngjoo Lee
+Copyright (C) 2023 Youngjoo Lee
 
 Author: Youngjoo Lee <youngker@gmail.com>
 
